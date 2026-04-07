@@ -245,7 +245,7 @@ function drawFlower(x, y, hsl, size = 1.0, type, phase = 0, img = null) {
 function drawGroupFlower(x, y, hsl, size, type, phase, imgs) {
   if (!type) type = FLOWER_TYPES[0];
   const [h, s, l] = hsl;
-  const n = imgs.length; // 2 or 3
+  const n = imgs.length;
 
   push();
   translate(x, y);
@@ -256,18 +256,40 @@ function drawGroupFlower(x, y, hsl, size, type, phase, imgs) {
   const freq = type.stemStyle === 'wispy' ? 0.28 : 0.18;
   const amp  = type.stemStyle === 'droop' ? 10 : type.stemStyle === 'wispy' ? 6 : type.stemStyle === 'straight' ? 2 : 3;
 
-  // Each branch splits off at a different height along the stem
-  // Staggered fork points and angles so it looks like a natural stalk
-  const branches = n === 2
-    ? [
-        { forkY: 55, angle: -0.7, len: 55, sc: 0.55 },  // lower left
-        { forkY: 15, angle:  0.5, len: 45, sc: 0.6  },  // upper right
-      ]
-    : [
-        { forkY: 70, angle: -0.75, len: 55, sc: 0.5  }, // lowest left
-        { forkY: 40, angle:  0.65, len: 50, sc: 0.55 }, // middle right
-        { forkY: 10, angle: -0.35, len: 40, sc: 0.6  }, // top left
-      ];
+  // Branch layouts for 2–6 faces
+  const branchLayouts = {
+    2: [
+      { forkY: 55, angle: -0.7,  len: 55, sc: 0.55 },
+      { forkY: 15, angle:  0.5,  len: 45, sc: 0.6  },
+    ],
+    3: [
+      { forkY: 70, angle: -0.75, len: 55, sc: 0.5  },
+      { forkY: 40, angle:  0.65, len: 50, sc: 0.55 },
+      { forkY: 10, angle: -0.35, len: 40, sc: 0.6  },
+    ],
+    4: [
+      { forkY: 80, angle: -0.8,  len: 55, sc: 0.45 },
+      { forkY: 55, angle:  0.7,  len: 50, sc: 0.48 },
+      { forkY: 30, angle: -0.55, len: 45, sc: 0.5  },
+      { forkY:  8, angle:  0.4,  len: 40, sc: 0.52 },
+    ],
+    5: [
+      { forkY: 88, angle: -0.85, len: 55, sc: 0.42 },
+      { forkY: 68, angle:  0.75, len: 52, sc: 0.44 },
+      { forkY: 48, angle: -0.6,  len: 48, sc: 0.46 },
+      { forkY: 28, angle:  0.5,  len: 44, sc: 0.48 },
+      { forkY:  8, angle: -0.3,  len: 38, sc: 0.5  },
+    ],
+    6: [
+      { forkY: 95, angle: -0.9,  len: 58, sc: 0.38 },
+      { forkY: 78, angle:  0.8,  len: 54, sc: 0.4  },
+      { forkY: 60, angle: -0.65, len: 50, sc: 0.42 },
+      { forkY: 42, angle:  0.55, len: 46, sc: 0.44 },
+      { forkY: 24, angle: -0.4,  len: 42, sc: 0.46 },
+      { forkY:  6, angle:  0.3,  len: 36, sc: 0.48 },
+    ],
+  };
+  const branches = branchLayouts[constrain(n, 2, 6)] || branchLayouts[3];
 
   // Helper: get stem x at a given y
   function stemX(sy) {

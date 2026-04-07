@@ -6,7 +6,7 @@ const SMILE_HOLD_REQUIRED  = 5;
 const SNAP_COOLDOWN        = 1000;
 const PANEL_CYCLE_DURATION = 20000;
 const MAX_FLOWERS          = 1000;
-const MAX_GROUP_FACES      = 3;
+const MAX_GROUP_FACES      = 6;
 
 // ── Day/Night Cycle ──────────────────────────────────
 const DAY_CYCLE_DURATION   = 54000;  // frames at 60fps ≈ 15 min full cycle
