@@ -44,7 +44,7 @@ rain= loadSound('sounds/rain.mp3', () => { rain.setVolume(0.2); });
   lightning = loadSound('sounds/lightning.mp3', () => { lightning.setVolume(0.3); });
   nightSound = loadSound('sounds/night.mp3', () => { nightSound.setVolume(0.3); });
 
-  milestone67Sound = loadSound('sounds/milestone67.mp3', () => { milestone67Sound.setVolume(0.5); });
+  milestone67Sound = loadSound('sounds/milestone67.mp3', () => { milestone67Sound.setVolume(0.15); });
   const msFiles = [
     'sounds/milestone_one.mp3', 'sounds/milestone_two.mp3',
     'sounds/milestone_eight.mp3', 'sounds/milestone_nine.mp3', 'sounds/milestone_ten.mp3',
@@ -52,7 +52,7 @@ rain= loadSound('sounds/rain.mp3', () => { rain.setVolume(0.2); });
     'sounds/milestone_sixteen.mp3'
   ];
   for (let f of msFiles) {
-    loadSound(f, function(s) { s.setVolume(0.5); milestoneSounds.push(s); });
+    loadSound(f, function(s) { s.setVolume(0.15); milestoneSounds.push(s); });
   }
 
   const photoFiles = [
