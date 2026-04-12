@@ -1,4 +1,14 @@
-// ── MrPerkins ─────────────────────────────────────────
+// ================================================================
+// File: mrperkins.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Defines the MrPerkins class for a businessman character who
+//   walks in from off-screen, delivers a speech bubble, then exits.
+// ================================================================
+
+// MrPerkins class manages the enter/speak/exit lifecycle for a cameo character
+// who walks to a random position, says a phrase, then walks back off-screen.
 class MrPerkins {
   constructor() {
     this.fromLeft = random() < 0.5;
@@ -14,6 +24,7 @@ class MrPerkins {
     this.targetX = random(0.25, 0.75); // walk to middle area
   }
 
+  // Advances MrPerkins through enter, speak, and exit states each frame.
   update() {
     if (this.state === 'enter') {
       const dx = this.targetX - this.wx;
@@ -53,6 +64,7 @@ class MrPerkins {
     }
   }
 
+  // Renders MrPerkins at his depth-scaled screen position.
   draw() {
     const { sx, sy } = worldToScreen(this.wx, this.wy);
     const ds = depthScale(this.wy);
@@ -64,6 +76,7 @@ class MrPerkins {
   }
 }
 
+// Draws the MrPerkins figure: white shirt, red tie, khaki pants, bald head, and beard.
 function drawMrPerkinsShape(phase, state, dir) {
   const walking = (state === 'enter' || state === 'exit');
   push();

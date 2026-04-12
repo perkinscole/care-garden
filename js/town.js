@@ -1,3 +1,12 @@
+// ================================================================
+// File: town.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Town backdrop rendering with shops, buildings,
+//   vehicles, and pedestrians in a Holliston naive/folk-art style.
+// ================================================================
+
 // ── Town Backdrop ─────────────────────────────────────
 // Holliston naive/folk-art town drawn in the sky zone.
 // Single entry point: drawTown()  — wrapped in push/pop
@@ -12,6 +21,7 @@ let _bgWalkers2     = null;
 let _bgBikers       = null;
 let _bgTrailWalkers = null;
 
+// Initialize car, walker, and biker arrays for background animation
 function _initBgElements() {
   const palette = [
     [5,65,52],[210,55,52],[120,45,40],[48,70,55],[0,0,82],
@@ -73,6 +83,7 @@ function _initBgElements() {
 
 // ── Small helpers ────────────────────────────────────
 
+// Draw a wispy smoke effect rising from chimneys
 function _naiveSmoke(x, y) {
   noFill();
   stroke(0, 0, 72, 110);
@@ -91,6 +102,7 @@ function _naiveSmoke(x, y) {
   ellipse(x - 1, y - 32, 3, 3);
 }
 
+// Draw a four-pane window with mullions and optional night glow
 function _naiveWindow(x, y, w, h) {
   noStroke();
   const na = nightAmount();
@@ -111,6 +123,7 @@ function _naiveWindow(x, y, w, h) {
 
 // ── Small town trees (deciduous + conifer mix) ──────
 
+// Draw a single deciduous (type 0) or conifer (type 1) tree
 function _townTree(x, y, h, type) {
   push(); translate(x, y); noStroke();
   fill(22, 30, 24);
@@ -125,6 +138,7 @@ function _townTree(x, y, h, type) {
   pop();
 }
 
+// Draw a row of alternating deciduous and conifer trees
 function _treeRow(x, y, count, spacing, h, sc) {
   for (let i = 0; i < count; i++) {
     const tx = x + i * spacing + (i % 2) * spacing * 0.3;
@@ -136,6 +150,7 @@ function _treeRow(x, y, count, spacing, h, sc) {
 //  drawTown()  — the single entry point
 // ══════════════════════════════════════════════════════
 
+// Main orchestrator that draws the entire town backdrop (forest, trails, roads, buildings)
 function drawTown() {
   push();
   drawingContext.save();
@@ -460,6 +475,7 @@ let offset = 25;
 
 // ── Rail Trail Tunnel ────────────────────────────────
 
+// Draw the rail trail stone tunnel with arch, vines, and sign
 function _naiveTunnel(x, y, sc=1) {
   push();
   translate(x, y);
@@ -558,6 +574,7 @@ function _naiveTunnel(x, y, sc=1) {
 
 // ── Lake Winthrop ────────────────────────────────────
 
+// Draw Lake Winthrop with shore, reeds, ripples, and label
 function _naiveLake(x, y, w, h) {
   push();
   translate(x, y);
@@ -636,6 +653,7 @@ function _naiveLake(x, y, w, h) {
 
 // ── Green field patches ─────────────────────────────
 
+// Draw a green crop field patch with textured rows
 function _naiveField(x, y, w, h, hue) {
   push();
   translate(x, y);
@@ -656,6 +674,7 @@ function _naiveField(x, y, w, h, hue) {
 
 // ── Small shop storefront ────────────────────────────
 
+// Draw a generic small shop storefront with awning, window, and sign
 function _naiveShop(x, y, sc, hue, name) {
   push();
   translate(x, y);
@@ -703,6 +722,7 @@ function _naiveShop(x, y, sc, hue, name) {
 
 // ── Building functions ───────────────────────────────
 
+// Draw a white clapboard church with steeple, cross, and arched door
 function _naiveChurch(x, y, sc=1) {
   push();
   translate(x, y);
@@ -788,6 +808,7 @@ function _naiveChurch(x, y, sc=1) {
   pop();
 }
 
+// Draw the colonial Town Hall with pediment, flagpole, and chimneys
 function _naiveTownHall(x, y, sc=1) {
   push();
   translate(x, y);
@@ -887,6 +908,7 @@ function _naiveTownHall(x, y, sc=1) {
   pop();
 }
 
+// Draw the Superette storefront with striped awning and utility pole
 function _naiveSuperette(x, y, sc=1) {
   push();
   translate(x, y);
@@ -962,6 +984,7 @@ function _naiveSuperette(x, y, sc=1) {
   pop();
 }
 
+// Draw Fiske's General Store with display windows, awnings, and balloons
 function _naiveFiskes(x, y, sc=1) {
   push();
   translate(x, y);
@@ -1055,6 +1078,7 @@ function _naiveFiskes(x, y, sc=1) {
   pop();
 }
 
+// Draw the CVS pharmacy storefront with red sign and automatic door
 function _naiveCVS(x, y, sc=1) {
   push();
   translate(x, y);
@@ -1110,6 +1134,7 @@ function _naiveCVS(x, y, sc=1) {
   pop();
 }
 
+// Draw the stone arch bridge with X-brace railing and foliage
 function _naiveBridge(x, y, sc=1) {
   push();
   translate(x, y);
@@ -1174,6 +1199,7 @@ function _naiveBridge(x, y, sc=1) {
   pop();
 }
 
+// Draw a residential house with gabled roof, chimney, and windows
 function _naiveHouse(x, y, s, hue, sat, lig, sc=1) {
   push();
   translate(x, y);
@@ -1220,6 +1246,7 @@ function _naiveHouse(x, y, s, hue, sat, lig, sc=1) {
 
 // ── Vehicle & pedestrian animation ───────────────────
 
+// Update positions and draw cars/buses on a road, wrapping at screen edges
 function _updateDrawBgCars(carArr, roadY, sc=1) {
   for (let car of carArr) {
     car.x += car.speed * car.dir;
@@ -1275,6 +1302,7 @@ function _updateDrawBgCars(carArr, roadY, sc=1) {
   }
 }
 
+// Update positions and draw walking pedestrians with leg-swing animation
 function _updateDrawBgWalkers(walkerArr, walkY, sc=1) {
   for (let w of walkerArr) {
     w.x += w.speed * w.dir;
@@ -1306,6 +1334,7 @@ function _updateDrawBgWalkers(walkerArr, walkY, sc=1) {
   }
 }
 
+// Update positions and draw cyclists with pedalling animation on the rail trail
 function _updateDrawBgBikers(bikerArr, trailY, sc=1) {
   for (let b of bikerArr) {
     b.x += b.speed * b.dir;

@@ -1,6 +1,14 @@
-// ── Ram ─────────────────────────────────────────────
-// ── Ram ───────────────────────────────────────────────
+// ================================================================
+// File: ram.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Defines the Ram character that wanders the garden,
+//   grazes on flowers, and produces droppings that grow into new flowers.
+// ================================================================
 
+// Ram class manages the sheep's state machine (wander/approach/eat/idle),
+// blink cycle, speech bubbles, storm behavior, and poop-to-flower lifecycle.
 class Ram {
   constructor() {
     this.wx = 0.5;
@@ -21,6 +29,7 @@ class Ram {
 this.poops = [];
   }
 
+  // Searches flowers array for one within grazing range and returns its index, or -1.
   findNearbyFlower() {
     for (let i = 0; i < flowers.length; i++) {
       const f = flowers[i];
@@ -32,6 +41,7 @@ this.poops = [];
     return -1;
   }
 
+  // Advances the ram's state machine each frame: blinking, storm panic, wandering, eating, and pooping.
   update() {
     
     
@@ -183,6 +193,7 @@ this.wy = constrain(this.wy + sep.nudgeY, 0.04, 0.98);
     }
   }
 
+  // Renders poop piles (which eventually become flowers) and the ram sprite at its world position.
   draw() {
   // draw poops first (behind ram) in world space
   for (let i = this.poops.length - 1; i >= 0; i--) {
@@ -231,6 +242,7 @@ this.wy = constrain(this.wy + sep.nudgeY, 0.04, 0.98);
 }
 
 }
+// Draws the detailed ram anatomy: wool body, curled horns, legs, hooves, muzzle, and chewing animation.
 function drawRamShape(phase, state, mouthOpen, dir, blinking) {
   const walking = (state === 'wander' || state === 'approach');
 

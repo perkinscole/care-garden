@@ -1,3 +1,12 @@
+/* ================================================================
+   File: style.css
+   Author: Cole Perkins
+   Date Created: March 28, 2026 (refactored April 1, 2026)
+   Last Modified: April 11, 2026
+   Description: Minimal styles for the CARE Garden canvas.
+                Removes default margins and makes the canvas fill the screen.
+   ================================================================ */
+
 html, body {
   margin: 0;
   padding: 0;

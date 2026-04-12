@@ -1,4 +1,14 @@
-// ── Gardener ─────────────────────────────────────────
+// ================================================================
+// File: gardener.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Defines the Gardener character who wanders the garden watering
+//   flowers, opens an umbrella in rain, shelters at the school, and flees the goose.
+// ================================================================
+
+// Gardener class handles the gardener's state machine (wander/water/shelter/flee/night),
+// watering can physics, droplet particles, umbrella display, and goose evasion.
 class Gardener {
   constructor() {
     this.wx = 0.3;
@@ -20,7 +30,7 @@ this.umbrellaOut = false;
     this.goingInside = false;
   }
   
-  // Helper to spawn speech bubbles that track the gardener
+  // Spawns a speech bubble that tracks the gardener's screen position.
   speak(msg) {
     speechBubbles.push(new SpeechBubble(msg, () => {
       let pos = worldToScreen(this.wx, this.wy);
@@ -32,6 +42,7 @@ this.umbrellaOut = false;
     }));
   }
 
+  // Searches flowers array for one within watering range and returns its index, or -1.
   findNearbyFlower() {
     for (let i = 0; i < flowers.length; i++) {
       const f = flowers[i];
@@ -42,6 +53,7 @@ this.umbrellaOut = false;
     return -1;
   }
 
+  // Advances the gardener's state each frame: rain/night checks, flee logic, watering, and movement.
   update() {
 
     const isRaining = weatherState === 'rainy' || weatherState === 'stormy';
@@ -304,6 +316,7 @@ this.wy = constrain(this.wy + sep.nudgeY, 0.04, 0.98);
     }
   }
 
+  // Renders the gardener sprite, water droplets, and speech bubbles at the current world position.
   draw() {
     if (this.state === 'inside') return;
     const { sx, sy } = worldToScreen(this.wx, this.wy);
@@ -327,6 +340,7 @@ for (let b of speechBubbles) b.draw();
   }
 }
 
+// Draws the gardener figure: flowered dress, sun hat, watering can (with pour), and rainbow umbrella.
 function drawGardenerShape(phase, state, pourAngle, dir, umbrella = false) {
   const walking = (state === 'wander' || state === 'approach' || state === 'flee' || state === 'shelter');
   const sheltering = state === 'sheltering';

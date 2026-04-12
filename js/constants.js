@@ -1,5 +1,15 @@
+// ================================================================
+// File: constants.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: All configuration constants for the CARE Garden,
+//   including timing, thresholds, color keyframes, and character data.
+// ================================================================
+
 // ── Constants & Data ─────────────────────────────────
 
+// Flower spawning, gallery, and smile detection thresholds
 const FLOWER_COOLDOWN      = 5;
 const MAX_GALLERY          = 6;
 const SMILE_HOLD_REQUIRED  = 5;
@@ -8,11 +18,13 @@ const PANEL_CYCLE_DURATION = 20000;
 const MAX_FLOWERS          = 1000;
 const MAX_GROUP_FACES      = 6;
 
+// Day/night cycle timing and ambient element counts
 // ── Day/Night Cycle ──────────────────────────────────
 const DAY_CYCLE_DURATION   = 54000;  // frames at 60fps ≈ 15 min full cycle
 const NUM_STARS            = 120;
 const NUM_FIREFLIES        = 10;
 
+// Sky gradient keyframes keyed by normalized time-of-day (0..1)
 // Sky color keyframes: [timeOfDay, hue, saturation, lightnessTop, lightnessBottom]
 // Sky keyframes — hue transitions between orange(25) and blue(220+) desaturate
 // through the crossover so green/purple are never visible
@@ -38,6 +50,7 @@ const SKY_KEYFRAMES = [
   { t: 1.00, hue: 230, sat: 40, litTop: 12, litBot: 18 },   // midnight (wrap)
 ];
 
+// Ground gradient keyframes keyed by normalized time-of-day (0..1)
 // Ground color keyframes: [timeOfDay, hue, satHorizon, litHorizon, satFront, litFront]
 const GROUND_KEYFRAMES = [
   { t: 0.00, hue: 108, satH: 20, litH: 16, satF: 35, litF: 10 },
@@ -50,11 +63,13 @@ const GROUND_KEYFRAMES = [
   { t: 1.00, hue: 108, satH: 20, litH: 16, satF: 35, litF: 10 },
 ];
 
+// Score thresholds that trigger a confetti celebration
 const CONFETTI_MILESTONES = [
   1,25,50,67,100,150,200,250,300,350,400,500,750,
   1000,1500,2000,3000,4000,5000,6000,7000,8000,9000,10000
 ];
 
+// Flower species definitions: petal geometry, disc size, scale range, and stem style
 const FLOWER_TYPES = [
   { name:'daisy',     petalCount:13, petalLen:44, petalWidth:7,  petalShape:'narrow',   discSize:45, sizeRange:[0.4,0.8], stemStyle:'straight' },
   { name:'tulip',     petalCount:6,  petalLen:52, petalWidth:18, petalShape:'cup',       discSize:35, sizeRange:[0.4,0.8], stemStyle:'straight' },
@@ -66,6 +81,7 @@ const FLOWER_TYPES = [
   { name:'anemone',   petalCount:7,  petalLen:38, petalWidth:18, petalShape:'round',     discSize:48, sizeRange:[0.4,0.8], stemStyle:'wispy'    },
 ];
 
+// Character info-card data displayed in the side panel
 const CHARACTER_CARDS = [
   {
     id:'ram', name:'RAMY THE RAM', title:'Mascot & Spirit Animal',
@@ -104,6 +120,7 @@ const CHARACTER_CARDS = [
   }
 ];
 
+// Speech bubble phrases for each character
 const RAM_PHRASES = [
   "Baaaa!", "Nom nom nom...", "Go Rams!",
   "Ooh, tasty!", "More flowers please!", "*munches happily*"

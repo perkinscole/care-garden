@@ -1,5 +1,16 @@
+// ================================================================
+// File: flowers.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Flower class and drawing system for the CARE Garden.
+//   Supports single-stem and branching multi-head group flowers
+//   with face images clipped into the disc center.
+// ================================================================
+
 // ── Flowers ───────────────────────────────────────────
 
+// Represents a single flower instance with position, color, growth state, and face images
 class Flower {
   constructor(wx, wy, hsl, imgs = []) {
     this.wx    = wx;
@@ -16,13 +27,15 @@ class Flower {
     this.phase      = random(TWO_PI);
     this.dirtAlpha  = 255;
   }
- boost() {
+  // Increases the flower's target size when boosted (e.g. by rain)
+  boost() {
   const maxSize = this.type.sizeRange[1] * 1.3;
   this.targetSize = min(this.targetSize + 0.05, maxSize);
    if (this.targetSize < this.maxAllowed) {
       this.targetSize += 0.05;
     }
 }
+  // Interpolates the flower toward its target size each frame
   update() {
     this.size = lerp(this.size, this.targetSize, 0.05 + rainBoost);
   const maxSize = this.type.sizeRange[1] * 1.4;
@@ -34,10 +47,12 @@ class Flower {
   this.restSize   = max(this.restSize,   0.02);
   if (this.dirtAlpha > 0) this.dirtAlpha -= 1.5;
   }
+  // Removes face images from the DOM to free memory
   dispose() {
     for (let img of this.imgs) img.remove();
     this.imgs = [];
   }
+  // Updates state and draws the flower (single or group) at its world position
   draw(){
     this.update();
     const { sx, sy } = worldToScreen(this.wx, this.wy);
@@ -53,6 +68,7 @@ class Flower {
   }
 }
 
+// Draws the flower stem with style-dependent width, sway, and optional thorns
 function drawStem(type, phase) {
   const sw   = type.stemStyle === 'thick' ? 5 : type.stemStyle === 'wispy' ? 1.8 : 3.2;
   const amp  = type.stemStyle === 'droop' ? 10 : type.stemStyle === 'wispy' ? 6 : type.stemStyle === 'straight' ? 2 : 3;
@@ -83,6 +99,7 @@ function drawStem(type, phase) {
   pop();
 }
 
+// Draws two leaves on the stem, shaped differently for lilies/tulips vs other types
 function drawLeaves(type, phase) {
   push();
   noStroke();
@@ -109,6 +126,7 @@ function drawLeaves(type, phase) {
   pop();
 }
 
+// Draws a single petal using Bezier curves; shape varies by flower type
 function drawPetal(shape, len, w, h, s, l, alpha, dark) {
   const col = dark ? color(h, s-8, l-12, alpha) : color(h + sin(w)*15, s, l, alpha);
   fill(col);
@@ -125,6 +143,7 @@ function drawPetal(shape, len, w, h, s, l, alpha, dark) {
   endShape(CLOSE);
 }
 
+// Draws the central disc of the flower with concentric ring details
 function drawDisc(discSize, h, s, l) {
   if (discSize === 0) return;
   push();
@@ -146,6 +165,7 @@ function drawDisc(discSize, h, s, l) {
 
 // ── Flower head (petals + disc + face) ──────────────
 
+// Draws the full flower head: back petals, front petals, veins, disc, pollen, and clipped face image
 function drawFlowerHead(h, s, l, type, phase, img) {
   const { petalCount, petalShape, discSize } = type;
   // Shrink petals when a face is present so the photo stands out
@@ -212,6 +232,7 @@ function drawFlowerHead(h, s, l, type, phase, img) {
 
 // ── Single flower (stem + leaves + head) ────────────
 
+// Draws a small dirt mound at the flower base that fades after planting
 function drawDirtMound(x, y, alpha) {
   push();
   translate(x, y);
@@ -225,6 +246,7 @@ function drawDirtMound(x, y, alpha) {
   pop();
 }
 
+// Draws a complete single-stem flower: stem, leaves, and flower head
 function drawFlower(x, y, hsl, size = 1.0, type, phase = 0, img = null) {
   if (!type) type = FLOWER_TYPES[0];
   const [h, s, l] = hsl;
@@ -242,6 +264,7 @@ function drawFlower(x, y, hsl, size = 1.0, type, phase = 0, img = null) {
 
 // ── Group flower (branching stem + multiple heads) ──
 
+// Draws a branching multi-head flower with one stem forking into sub-stems, each topped with a face
 function drawGroupFlower(x, y, hsl, size, type, phase, imgs) {
   if (!type) type = FLOWER_TYPES[0];
   const [h, s, l] = hsl;

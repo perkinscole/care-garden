@@ -1,4 +1,14 @@
-// ── Cat ─────────────────────────────────────────────
+// ================================================================
+// File: cat.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Defines the Cat character that wanders, sits, sleeps, stalks
+//   butterflies, pounces, and shelters from rain near the school.
+// ================================================================
+
+// Cat class manages the cat's state machine (wander/sit/stalk/pounce/sleep/shelter),
+// blinking, tail animation, butterfly hunting, and rain shelter behavior.
 class Cat {
   constructor() {
     this.wx = random(0.1, 0.9);
@@ -24,6 +34,7 @@ class Cat {
 this.zzPhase = 0;
   }
 
+  // Finds a nearby butterfly (creature) within stalking distance and returns it, or null.
   findNearbyCreature() {
     for (let c of creatures) {
       if (!c.x || !c.y) continue;
@@ -36,6 +47,7 @@ this.zzPhase = 0;
     return null;
   }
 
+  // Advances the cat's state each frame: blinking, speech, rain checks, wandering, stalking, and sleeping.
   update() {
     // blink
     this.blinkTimer--;
@@ -234,6 +246,7 @@ this.twy = constrain(this.wy + random(-0.15, 0.15), 0.1, 0.9);
   }
   }
 
+  // Renders the cat sprite and floating "z" letters when sleeping.
   draw() {
     const { sx, sy } = worldToScreen(this.wx, this.wy);
     const ds = depthScale(this.wy);
@@ -271,6 +284,7 @@ this.twy = constrain(this.wy + random(-0.15, 0.15), 0.1, 0.9);
   }
 }
 
+// Draws the cat in various postures (lying, sitting, walking, stalking) with ears, whiskers, and tail.
 function drawCatShape(phase, state, dir, furHue, furL, blinking, tailPhase) {
   const lying    = (state === 'sheltering'|| state === 'sleep');
   const sitting  = (state === 'sit' || state === 'miss' || state === 'idle');

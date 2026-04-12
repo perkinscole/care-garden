@@ -1,4 +1,14 @@
-// ── Rabbit ─────────────────────────────────────────
+// ================================================================
+// File: rabbit.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Defines the Rabbit class for rabbits that hop across the
+//   screen from one side to the other, moving faster during storms.
+// ================================================================
+
+// Rabbit class manages a transient rabbit that hops across the garden in bursts,
+// with increased speed during storms, and removes itself after crossing the screen.
 class Rabbit {
   constructor() {
     this.fromLeft = random() < 0.5;
@@ -12,6 +22,7 @@ class Rabbit {
     this.done     = false;
   }
 
+  // Advances the rabbit's hop cycle each frame, with faster continuous hopping in storms.
   update() {
     // hop rhythm — move in short bursts with pauses
     this.hopTimer--;
@@ -50,6 +61,7 @@ class Rabbit {
     if (this.wx < -0.12 || this.wx > 1.12) this.done = true;
   }
 
+  // Draws the rabbit inline: body, head, ears, tail, eye, nose, and visible legs when hopping.
   draw() {
     const { sx, sy } = worldToScreen(this.wx, this.wy);
     const ds = depthScale(this.wy);

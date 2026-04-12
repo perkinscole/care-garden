@@ -1,5 +1,15 @@
+// ================================================================
+// File: weather.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Weather system with state machine (sunny/cloudy/rainy/
+//   stormy/clearing), rain, storms, puddles, lightning, and rainbow.
+// ================================================================
+
 // ── Weather System ────────────────────────────────────
 
+// Create a new background raindrop with random position, speed, and alpha
 function newRaindrop() {
   return {
     x:     random(-50, width + 50),
@@ -11,6 +21,7 @@ function newRaindrop() {
   };
 }
 
+// Create a new foreground raindrop that falls through the ground area
 function newFgRaindrop() {
   // Foreground raindrops fall through the ground area (horizon → splitY)
   return {
@@ -23,6 +34,7 @@ function newFgRaindrop() {
   };
 }
 
+// Advance the weather state machine, transitioning between weather states on timer
 function updateWeather() {
   weatherTimer--;
 
@@ -60,6 +72,7 @@ function updateWeather() {
   lightningAlpha = max(0, lightningAlpha - 18);
 }
 
+// Draw weather effects (overlay, clouds, rain, lightning, rainbow) and manage ambient sounds
 function drawWeather() {
   const na = nightAmount();
 
@@ -105,6 +118,7 @@ function drawWeather() {
   }
 }
 
+// Draw animated storm clouds drifting across the sky
 function drawStormClouds() {
   const na = nightAmount();
   const cloudAlpha = weatherAlpha * 210;
@@ -125,6 +139,7 @@ function drawStormClouds() {
   }
 }
 
+// Draw background raindrops falling in the sky area above the horizon
 function drawRain() {
   // Background rain — sky area only (above horizon)
   const rainIntensity = weatherState === 'stormy' ? 1.0 : 0.6;
@@ -143,6 +158,7 @@ function drawRain() {
   }
 }
 
+// Draw foreground raindrops in the ground area with splash effects on landing
 function drawForegroundRain() {
   // Foreground rain — falls through the ground area in front of characters
   if (weatherState !== 'rainy' && weatherState !== 'stormy') return;
@@ -176,6 +192,7 @@ function drawForegroundRain() {
 
 // ── Puddle System ──────────────────────────────────────
 
+// Spawn a new puddle at a random world position, or grow an existing nearby one
 function spawnPuddleInWorld() {
   const wx = random(0.05, 0.95);
   const wy = random(0.15, 0.95);
@@ -203,6 +220,7 @@ function spawnPuddleInWorld() {
   }
 }
 
+// Update puddle sizes: grow during rain, shrink and evaporate when dry
 function updatePuddles() {
   const isRaining = (weatherState === 'rainy' || weatherState === 'stormy');
 
@@ -228,6 +246,7 @@ function updatePuddles() {
   puddles = puddles.filter(p => p.size > 0.5);
 }
 
+// Draw puddles with shimmer highlights, rain ripples, and evaporation wisps
 function drawPuddles() {
   for (let p of puddles) {
     const { sx, sy } = worldToScreen(p.wx, p.wy);
@@ -277,6 +296,7 @@ function drawPuddles() {
   }
 }
 
+// Draw a jagged lightning bolt from sky to horizon with glow effect
 function drawLightningBolt() {
   const bx = random(width * 0.2, width * 0.8);
   push();
@@ -300,6 +320,7 @@ function drawLightningBolt() {
   pop();
 }
 
+// Draw a seven-band rainbow arc during the clearing weather state
 function drawRainbow() {
   const cx = width / 2;
   const cy = gndHorizon() + 20;
@@ -316,6 +337,7 @@ function drawRainbow() {
   pop();
 }
 
+// Draw the HUD forecast panel showing current weather and upcoming transition
 function drawWeatherForecast() {
   const panelW = 120, panelH = 72;
   const px = width - panelW - 12, py = 12;

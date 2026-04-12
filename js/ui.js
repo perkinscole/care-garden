@@ -1,7 +1,18 @@
+// ================================================================
+// File: ui.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: UI systems for the CARE Garden including smile stats
+//   persistence, gallery panel, character cards, CARE score dashboard,
+//   speech bubbles, and confetti celebrations.
+// ================================================================
+
 // ── UI: Speech Bubbles, Panels, Gallery, Confetti ────
 
 // ── Smile Stats (localStorage) ──────────────────────
 
+// Formats a Date object into a "YYYY-MM-DD" string using local time
 function localDateStr(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -9,10 +20,12 @@ function localDateStr(d) {
   return y + '-' + m + '-' + day;
 }
 
+// Returns today's date as a localStorage-friendly key string
 function getTodayKey() {
   return localDateStr(new Date());
 }
 
+// Returns an array of 7 date-key strings (Sun-Sat) for the current week
 function getWeekDays() {
   // Returns array of 7 date keys (Sun–Sat) for the current week
   const now = new Date();
@@ -25,6 +38,7 @@ function getWeekDays() {
   return days;
 }
 
+// Loads smile statistics from localStorage and syncs careScore and milestones
 function loadSmileStats() {
   try {
     const raw = localStorage.getItem('careGardenStats');
@@ -55,6 +69,7 @@ function loadSmileStats() {
   } catch (e) { /* ignore */ }
 }
 
+// Persists new smile counts to localStorage, updates records, and prunes old entries
 function saveSmileStats(added) {
   try {
     const raw = localStorage.getItem('careGardenStats');
@@ -91,6 +106,7 @@ function saveSmileStats(added) {
 
 // ── SpeechBubble ─────────────────────────────────────
 
+// Floating speech bubble that fades in, drifts upward, then fades out above a character
 class SpeechBubble {
   constructor(text, getPos) {
     this.text   = text;
@@ -103,6 +119,7 @@ class SpeechBubble {
     this.floatY = 0;
   }
 
+  // Advances age, updates float offset and alpha transparency; returns false when expired
   update() {
     this.age++;
     this.floatY -= 0.3;
@@ -116,6 +133,7 @@ class SpeechBubble {
     return this.age < this.duration;
   }
 
+  // Renders the bubble with a triangular tail at the character's position
   draw() {
     const pos = this.getPos();
     const px  = pos.x;
@@ -137,6 +155,7 @@ class SpeechBubble {
 
 // ── Gallery & Panel Management ───────────────────────
 
+// Adds pending photos to the gallery queue and fades them in over time
 function manageGallery() {
   if (millis() - lastGalleryUpdate > updateInterval && pendingPhoto) {
     smileGallery.unshift({ img: pendingPhoto, alpha: 0 });
@@ -149,6 +168,7 @@ function manageGallery() {
   }
 }
 
+// Cycles between the gallery panel and character cards on a timed rotation
 function drawSmileGallery(ox) {
   if (millis() - panelModeTimer > PANEL_CYCLE_DURATION) {
     panelCycleIdx = (panelCycleIdx + 1) % panelCycle.length;
@@ -163,6 +183,7 @@ function drawSmileGallery(ox) {
   }
 }
 
+// Draws the smile photo gallery grid panel with up to 6 thumbnail images
 function drawGalleryPanel(ox) {
   const panelW = ox, panelH = height - splitY();
   push();
@@ -204,6 +225,7 @@ function drawGalleryPanel(ox) {
   pop();
 }
 
+// Renders an "I SPY" character info card with sprite, name, title, and description
 function drawCharacterCard(ox, card) {
   const panelW = ox, panelH = height - splitY();
   push();
@@ -247,6 +269,7 @@ function drawCharacterCard(ox, card) {
   pop();
 }
 
+// Draws the animated character sprite for a given card ID centered at (cx, cy)
 function drawCardSprite(id, cx, cy, panelW) {
   const sc = min(panelW * 0.0025, 0.55);
   push();
@@ -268,6 +291,7 @@ function drawCardSprite(id, cx, cy, panelW) {
   pop();
 }
 
+// Draws a miniature Robert Adams Middle School building illustration
 function drawMiniSchool(panelW) {
   const sc = min(panelW / 380, 0.52);
   push(); colorMode(RGB,255); scale(sc);
@@ -329,6 +353,7 @@ function drawMiniSchool(panelW) {
   pop();
 }
 
+// Draws dot indicators and a progress bar showing the current panel cycle position
 function drawCycleIndicator(panelW, panelH) {
   const total = panelCycle.length, spacing = 10;
   const startX = (panelW - total * spacing) / 2 + spacing / 2;
@@ -346,6 +371,7 @@ function drawCycleIndicator(panelW, panelH) {
 
 // ── CARE Score Panel ─────────────────────────────────
 
+// Draws the CARE Garden dashboard panel with cycling stats and C-A-R-E value blocks
 function drawCareScore(ox) {
   const panelW = ox, panelH = height - splitY();
   push();
@@ -433,6 +459,7 @@ function drawCareScore(ox) {
 
 // ── Confetti ─────────────────────────────────────────
 
+// Checks if careScore has reached a new milestone and triggers confetti and sound
 function checkMilestone() {
   for (let m of CONFETTI_MILESTONES) {
     if (careScore >= m && lastMilestoneCelebrated < m) {
@@ -453,6 +480,7 @@ function checkMilestone() {
   }
 }
 
+// Spawns 180 confetti particles with random colors, shapes, and physics properties
 function launchConfetti() {
   for (let i = 0; i < 180; i++) {
     confettiParticles.push({
@@ -466,6 +494,7 @@ function launchConfetti() {
   }
 }
 
+// Updates confetti particle physics and renders them, plus shows a milestone banner
 function updateDrawConfetti() {
   for (let i = confettiParticles.length - 1; i >= 0; i--) {
     const p = confettiParticles[i];

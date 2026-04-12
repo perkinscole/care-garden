@@ -1,4 +1,14 @@
-// ── Goose ─────────────────────────────────────────────
+// ================================================================
+// File: goose.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Defines the Goose character that idles, wanders the garden,
+//   and occasionally chases the gardener while quacking aggressively.
+// ================================================================
+
+// Goose class manages the goose's state machine (idle/wander/chase),
+// storm panic behavior, quack sounds, and gardener pursuit logic.
 class Goose {
   constructor() {
     this.wx = random(0.2, 0.8);
@@ -10,17 +20,19 @@ class Goose {
     this.ty = this.wy;
   }
   
+  // Spawns a speech bubble that tracks the goose's screen position.
   speak(msg) {
     speechBubbles.push(new SpeechBubble(msg, () => {
       let pos = worldToScreen(this.wx, this.wy);
       let sc = depthScale(this.wy) * 0.6;
-      return { 
-        x: pos.sx, 
+      return {
+        x: pos.sx,
         y: pos.sy - (70 * sc) // Float right above its head, scaling with depth
       };
     }));
   }
 
+  // Advances the goose's state each frame: picks new states on timer, chases gardener, wanders, or idles.
   update() {
     this.timer--;
 
@@ -138,6 +150,7 @@ this.wy = constrain(this.wy + sep.nudgeY, 0.04, 0.98);
     
   }
 
+  // Renders the goose sprite at its depth-scaled screen position.
   draw() {
     // Convert 3D world coordinates to 2D screen coordinates
     const { sx, sy } = worldToScreen(this.wx, this.wy);
@@ -151,6 +164,7 @@ this.wy = constrain(this.wy + sep.nudgeY, 0.04, 0.98);
   }
 }
 
+// Draws the goose figure: white body, orange legs/beak, flapping wings, and angry eyebrow when chasing.
 function drawGooseShape(time, state, dir) {
   push();
   scale(dir, 1); // Flip the drawing based on which way it's facing

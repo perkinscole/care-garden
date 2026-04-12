@@ -1,4 +1,14 @@
-// ── Kids ─────────────────────────────────────────────
+// ================================================================
+// File: kids.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Defines the Kid class for children who exit the school, wander
+//   the garden, pick flowers, pet the ram, then return inside.
+// ================================================================
+
+// Kid class manages each child's lifecycle (enter/wander/pickFlower/petting/return/done),
+// randomized appearance, flower-picking mechanics, and ram-petting interactions.
 class Kid {
   constructor() {
     // start at school door in world coords
@@ -33,6 +43,7 @@ this.pickTimer = 0;
     this.pickTargetIdx = null;
   }
 
+  // Advances the kid's state machine each frame: walking, flower picking, petting, and return to school.
   update() {
     if (this.state === 'enter') {
       // walk out from school toward first wander target
@@ -252,6 +263,7 @@ if (frameCount % 90 === 0 && random() < 0.3 && !this.heldFlower) {
     }
   }
 
+  // Renders the kid sprite at its world position, scaled by depth and individual height.
   draw() {
     if (this.state === 'done') return;
     const { sx, sy } = worldToScreen(this.wx, this.wy);
@@ -270,6 +282,7 @@ if (frameCount % 90 === 0 && random() < 0.3 && !this.heldFlower) {
     pop();
   }
 }
+// Draws a child figure with randomized clothing, hair, hat, and optional held flower.
 function drawKidShape(phase, state, dir, shirtHue, pantsHue, skinL, hairHue, hairL, hasHat, hatHue, hasPonytail, heldFlower, pickTimer) {
   const walking = (state === 'wander' || state === 'enter' || state === 'return' || state === 'carry' || state === 'approachFlower'|| state === 'approachPet');
   const crouching = state === 'pickFlower';
@@ -375,10 +388,12 @@ function drawKidShape(phase, state, dir, shirtHue, pantsHue, skinL, hairHue, hai
 
 
 
+// Resizes the canvas to fill the browser window when the window dimensions change.
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
 }
 
+// Toggles fullscreen mode on mouse click.
 function mousePressed() {
 
   if (!fullscreen()) {
@@ -388,6 +403,7 @@ function mousePressed() {
   }
 }
 
+// Handles keyboard shortcuts: M toggles music, R/S/T force weather states.
 function keyPressed() {
   if (key === 'm' || key === 'M') {
     if (birds && birds.isPlaying()) {

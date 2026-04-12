@@ -1,9 +1,22 @@
+// ================================================================
+// File: facedetection.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Face detection with smile recognition and head
+//   decorations. Tracks smile hold durations, renders countdown
+//   timers, and draws hats, crowns, horns, and other accessories
+//   on detected faces using smoothed positioning.
+// ================================================================
+
 // ── Face Detection ───────────────────────────────────
 
+// Initiates asynchronous face detection via the ml5 faceApi
 function faceReady() {
   faceapi.detect(gotFaces);
 }
 
+// Callback that processes detection results, tracks smile frames per face, and re-triggers detection
 function gotFaces(error, result) {
   if (error) { console.log(error); return; }
   detections = result;
@@ -57,6 +70,7 @@ function gotFaces(error, result) {
   faceapi.detect(gotFaces);
 }
 
+// Draws colored bounding boxes around detected faces (green if smiling, blue otherwise)
 function drawBoxes(detections) {
   if (detections.length === 0 || !videoW || !videoH) return;
 
@@ -95,6 +109,7 @@ function drawBoxes(detections) {
   }
 }
 
+// Draws a circular countdown timer above each smiling face showing hold progress
 function drawCountdown() {
   if (!videoW || !videoH || videoDisplayW === 0) return;
 
@@ -128,6 +143,7 @@ function drawCountdown() {
 
 // ── Face Decorations ────────────────────────────────
 
+// Selects and renders a head decoration (hat, crown, horns, etc.) on each detected face
 function drawFaceDecorations(detections) {
   if (!decorationsEnabled) return;
   if (!hatTimeActive) return;
@@ -184,6 +200,7 @@ function drawFaceDecorations(detections) {
 let cleanHatImages = [];
 let hatsProcessed = false;
 
+// Removes black and green backgrounds from hat images to create transparent overlays
 function processHatImages() {
   if (hatsProcessed || hatImages.length === 0) return;
   // Check all images are loaded
@@ -212,6 +229,7 @@ function processHatImages() {
   hatsProcessed = true;
 }
 
+// Draws a pre-processed hat image centered above a detected face
 function drawHatImage(cx, ty, fw, img, sc, isDark) {
   if (!img) return;
   processHatImages();
@@ -225,6 +243,7 @@ function drawHatImage(cx, ty, fw, img, sc, isDark) {
   pop();
 }
 
+// Draws a golden crown with jeweled points above a face
 function drawFlowerCrown(cx, ty, fw) {
   const y = ty - fw * 0.05;
   const crownW = fw * 0.85;
@@ -257,6 +276,7 @@ function drawFlowerCrown(cx, ty, fw) {
   pop();
 }
 
+// Draws spiral ram horns on either side of a face with ridged detail
 function drawRamHorns(cx, ty, fw) {
   const y = ty + fw * 0.1;
   const r = fw * 0.35;
@@ -304,6 +324,7 @@ function drawRamHorns(cx, ty, fw) {
   pop();
 }
 
+// Draws a flower wreath (vine band with colorful blossoms) around the head
 function drawPartyHat(cx, ty, fw) {
   // Flower wreath hat — ring of flowers around the head
   const y = ty + fw * 0.05;
@@ -349,6 +370,7 @@ function drawPartyHat(cx, ty, fw) {
   pop();
 }
 
+// Draws an arc of glowing stars above a face as a crown decoration
 function drawStarCrown(cx, ty, fw) {
   const count = 7;
   const arcW = fw * 0.8;
@@ -372,6 +394,7 @@ function drawStarCrown(cx, ty, fw) {
   pop();
 }
 
+// Draws a 5-pointed star shape at (x, y) with the given outer radius
 function drawStar5(x, y, r) {
   beginShape();
   for (let i = 0; i < 10; i++) {
@@ -382,6 +405,7 @@ function drawStar5(x, y, r) {
   endShape(CLOSE);
 }
 
+// Draws a silver tiara with gem-topped arches and sparkle accents
 function drawHeadButterfly(cx, ty, fw) {
   // Silver tiara/crown
   const y = ty + fw * 0.05;

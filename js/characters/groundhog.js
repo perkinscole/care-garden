@@ -1,3 +1,14 @@
+// ================================================================
+// File: groundhog.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Defines the Groundhog class for a critter that emerges from
+//   a hole, looks around nervously, occasionally speaks, then hides again.
+// ================================================================
+
+// Groundhog class manages the rising/looking/hiding states, head bob animation,
+// random look direction, and speech bubble spawning for a burrowing critter.
 class Groundhog {
   constructor() {
     this.wx     = random(0.1, 0.9);
@@ -11,6 +22,7 @@ class Groundhog {
     this.phase = 0;       // for head bob
   }
 
+  // Advances the groundhog through rising, looking around, and hiding back underground.
   update() {
     this.phase += 0.08;
 
@@ -46,6 +58,7 @@ class Groundhog {
     }
   }
 
+ // Draws the groundhog using canvas clipping so it appears to emerge from a hole in the ground.
  draw() {
   const { sx, sy } = worldToScreen(this.wx, this.wy);
   const ds = depthScale(this.wy);

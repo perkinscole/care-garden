@@ -1,5 +1,15 @@
+// ================================================================
+// File: scene.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Renders all background scenery including sky, ground,
+//              trees, buildings, landmarks, and weather effects.
+// ================================================================
+
 // ── Scene Drawing ─────────────────────────────────────
 
+// Draws the perspective ground plane with a gradient that shifts by time of day
 function drawGround() {
   noStroke();
   const y0 = gndHorizon(), y1 = gndFront();
@@ -16,6 +26,7 @@ function drawGround() {
   noStroke(); fill(0, 0, 0, 0);
 }
 
+// Draws the sun (with arc, glow, and rays) and drifting clouds, dimmed at night
 function drawSky() {
   const na = nightAmount();
   const sunVis = constrain(1.0 - na * 2.5, 0, 1); // sun fades out at dusk
@@ -82,6 +93,7 @@ function drawSky() {
   }
 }
 
+// Draws a single cloud as a cluster of overlapping ellipses
 function drawCloud(x, y, s, alpha = 192) {
   push();
   translate(x, y);
@@ -95,6 +107,7 @@ function drawCloud(x, y, s, alpha = 192) {
 
 // ── Stars & Moon ─────────────────────────────────────
 
+// Draws twinkling stars and a crescent moon that fade in with nightAmount
 function drawStarsAndMoon() {
   const na = nightAmount();
   if (na < 0.05) return;
@@ -156,6 +169,7 @@ function drawStarsAndMoon() {
 
 // ── Fireflies ────────────────────────────────────────
 
+// Spawns, moves, and draws pulsing fireflies that appear at night
 function updateAndDrawFireflies() {
   const na = nightAmount();
 
@@ -211,6 +225,7 @@ function updateAndDrawFireflies() {
   pop();
 }
 
+// Draws swaying foreground grass blades using curved strokes with wind and depth
 function drawGrass() {
   push();
   const grassCutoff = gndHorizon() + 85;
@@ -235,6 +250,7 @@ function drawGrass() {
   pop();
 }
 
+// Draws a row of tree silhouettes along the horizon with wind sway
 function drawTrees() {
   const treeData = [
     {x:0.02,spread:1.0},{x:0.08,spread:0.85},{x:0.15,spread:1.1},
@@ -247,6 +263,7 @@ function drawTrees() {
   }
 }
 
+// Draws a single layered triangular tree with trunk, foliage layers, and highlights
 function drawTree(x, y, spread, sway) {
   const na = nightAmount();
   const trunkH = 28 * spread, trunkW = 5 * spread;
@@ -269,6 +286,7 @@ function drawTree(x, y, spread, sway) {
   }
 }
 
+// Draws the school building scene including picket fence, building, and sidewalks
 function drawSchool() {
   const s = width / 950;
   const hy = gndHorizon() + 110 * s;
@@ -303,6 +321,7 @@ function drawSchool() {
 
 // ── Detailed Middle School (RGB colors) ─────────────
 
+// Draws the Robert Adams Middle School with wings, windows, doors, and flagpole
 function drawMiddleSchool(x, y, s = 1) {
   push();
   translate(x, y);
@@ -486,6 +505,7 @@ function drawMiddleSchool(x, y, s = 1) {
   pop();
 }
 
+// Draws a flagpole with an American flag at the given position
 function drawSchoolFlagpole(x, y, h) {
   stroke(190, 194, 198);
   strokeWeight(3);
@@ -502,6 +522,7 @@ function drawSchoolFlagpole(x, y, h) {
   drawSmallFlag(x, y - h + 10, 40, 20);
 }
 
+// Draws a small waving American flag with stripes and star field
 function drawSmallFlag(x, y, w, h) {
   noStroke();
 
@@ -540,6 +561,7 @@ function drawSmallFlag(x, y, w, h) {
   }
 }
 
+// Draws a school main entrance door with transom window and panel details
 function drawMainEntrance(x, y, w, h) {
   fill(58, 68, 78);
   rect(x, y, w, h);
@@ -562,6 +584,7 @@ function drawMainEntrance(x, y, w, h) {
   noStroke();
 }
 
+// Draws a school window pane that glows warm yellow at night
 function drawSchoolWindow(x, y, w, h) {
   const na = nightAmount();
   fill(60, 78, 92);
@@ -594,6 +617,7 @@ function drawSchoolWindow(x, y, w, h) {
   noStroke();
 }
 
+// Draws a tall glass window panel that glows at night with a warm halo
 function drawTallSchoolGlass(x, y, w, h) {
   const na = nightAmount();
   fill(72, 96, 110);
@@ -621,6 +645,7 @@ function drawTallSchoolGlass(x, y, w, h) {
   noStroke();
 }
 
+// Draws a school side door with glass panel and divider lines
 function drawSchoolDoor(x, y, w, h) {
   fill(55, 68, 78);
   rect(x, y, w, h);
@@ -634,6 +659,7 @@ function drawSchoolDoor(x, y, w, h) {
   line(x + 1, y + 14, x + w - 1, y + 14);
   noStroke();
 }
+// Draws all horizon-line landmarks: church, town hall, rail trail, and balancing rock
 function drawHorizonLandmarks() {
   const hy = gndHorizon();
 
@@ -643,6 +669,7 @@ function drawHorizonLandmarks() {
   drawBalancingRock(width * 0.88, hy);
 }
 
+// Draws the First Congregational Church with steeple, columns, and night-lit windows
 function drawChurch(x, y) {
   // First Congregational Church — white, tall steeple
   push();
@@ -717,6 +744,7 @@ function drawChurch(x, y) {
   pop();
 }
 
+// Draws Holliston Town Hall with brick texture, arched windows, and clock tower
 function drawTownHall(x, y) {
   // Holliston Town Hall — brick with distinctive arched windows
   // and a small clock tower
@@ -813,6 +841,7 @@ function drawTownHall(x, y) {
   pop();
 }
 
+// Draws the rail trail path with gravel surface, old ties, and a small sign
 function drawRailTrail(y) {
   // Rail trail runs across the back of the scene
   // shown as a path disappearing into the treeline
@@ -861,6 +890,7 @@ function drawRailTrail(y) {
   pop();
 }
 
+// Draws the Holliston balancing rock -- a glacial erratic perched on a small base
 function drawBalancingRock(x, y) {
   // Famous Holliston balancing rock —
   // large glacial erratic perched on a smaller rock

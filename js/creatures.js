@@ -1,12 +1,23 @@
+// ================================================================
+// File: creatures.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Small animated creatures that add atmospheric life
+//   to the garden scene. Includes butterflies, bees, and birds.
+// ================================================================
+
 // ── Creatures ───────────────────────────────────────
 // ── Creatures ─────────────────────────────────────────
 
+// Butterfly with smooth Bezier flight paths and animated wing flaps
 class Butterfly {
   constructor() {
     this.reset();
     this.y  = random(20, splitY() - 30);
 
   }
+  // Randomizes position, target, speed, color, and size for a new flight path
   reset() {
     this.x = random(-40, width + 40);
 this.y  = random(20, splitY() - 30);
@@ -18,6 +29,7 @@ this.ty = random(20, splitY() - 30);
     this.size = random(0.7, 1.2);
     this.wingPhase = random(TWO_PI);
   }
+  // Moves the butterfly along a smooth lerp path with sinusoidal lift
   update() {
     this.prog += this.speed;
     this.tx += windX * 0.4;
@@ -26,6 +38,7 @@ this.ty = random(20, splitY() - 30);
     this.x = lerp(this.x, this.tx, this.speed * 4);
     this.y = lerp(this.y, this.ty, this.speed * 4) + sin(this.prog * PI) * -18;
   }
+  // Renders the butterfly with mirrored wing pairs, body, and antennae
   draw() {
     push();
     translate(this.x, this.y);
@@ -51,11 +64,13 @@ this.ty = random(20, splitY() - 30);
   }
 }
 
+// Bee with faster jittery flight paths and a striped body
 class Bee {
   constructor() {
     this.reset();
 this.y  = random(20, splitY() - 20);
   }
+  // Randomizes position, target, speed, and wobble for a new flight segment
   reset() {
     this.x = random(width);
 this.y  = random(20, splitY() - 20);
@@ -66,6 +81,7 @@ this.ty = random(20, splitY() - 20);
     this.wingPhase = random(TWO_PI);
     this.wobble = random(TWO_PI);
   }
+  // Moves the bee with lerp interpolation and a sinusoidal vertical wobble
   update() {
     this.prog += this.speed;
     this.tx += windX * 0.25;
@@ -74,6 +90,7 @@ this.ty = random(20, splitY() - 20);
     this.x = lerp(this.x, this.tx, this.speed * 3);
     this.y = lerp(this.y, this.ty, this.speed * 3) + sin(t * 0.18 + this.wobble) * 2;
   }
+  // Renders the bee with flapping wings, striped body segments, and eyes
   draw() {
     push();
     translate(this.x, this.y);
@@ -90,6 +107,7 @@ this.ty = random(20, splitY() - 20);
 }
 
 
+// Bird with a state machine (fly, descend, landed, takeoff) and animated wings
 class Bird {
   constructor() {
     this.done = false;
@@ -112,6 +130,7 @@ class Bird {
     this.yDrift = random(-0.4, 0.4);
   }
 
+  // Advances the bird through its state machine: fly, descend, landed, takeoff
   update() {
     if (this.state === 'fly') {
       this.x += this.speed * this.dir;
@@ -166,6 +185,7 @@ class Bird {
     }
   }
 
+  // Renders the bird as perched (compact with feet) or flying (with animated wing flaps)
   draw() {
     const landed  = this.state === 'landed';
     const takeoff = this.state === 'takeoff';

@@ -1,5 +1,14 @@
-// ── sketch.js — setup & draw only ───────────────────
+// ================================================================
+// File: sketch.js
+// Author: Cole Perkins
+// Date Created: March 28, 2026 (refactored April 1, 2026)
+// Last Modified: April 11, 2026
+// Description: Main entry point containing p5.js setup() and draw()
+//              functions. Initializes all systems (video, face detection,
+//              sounds, characters, weather) and runs the core render loop.
+// ================================================================
 
+// Initializes canvas, webcam, face detection, sounds, characters, and world state
 function setup() {
   canvas = createCanvas(windowWidth, windowHeight);
   canvas.id("canvas");
@@ -107,12 +116,15 @@ rain= loadSound('sounds/rain.mp3', () => { rain.setVolume(0.2); });
   panelCycle = getPanelCycle();
 }
 
+// Builds the panel rotation order: gallery first, then each character card
 function getPanelCycle() {
   const cycle = ['gallery'];
   for (let c of CHARACTER_CARDS) cycle.push(c.id);
   return cycle;
 }
 
+// Main render loop — runs every frame (60fps). Updates world state,
+// draws scene layers, processes face detection, and handles smile snaps
 function draw() {
   if (random() < 0.008) windTarget = random(-1, 1);
   windX += (windTarget - windX) * 0.004;
@@ -437,6 +449,7 @@ if (groundhog) {
   t++;
 }
 
+// Checks NSFW model predictions to ensure the video frame is appropriate
 function isFrameSafe(predictions) {
   for (let p of predictions) {
     if ((p.className === 'Porn' || p.className === 'Hentai') && p.probability > 0.3) {
@@ -446,6 +459,7 @@ function isFrameSafe(predictions) {
   return true;
 }
 
+// Captures a face region from the video feed as a mirrored image
 function captureFaceImg(box) {
   let img = createGraphics(box._width, box._height);
   img.push();
@@ -457,6 +471,7 @@ function captureFaceImg(box) {
   return img;
 }
 
+// Spawns a new flower at world coordinates with the captured face images
 function addFlower(wx, wy, hsl) {
   const imgs = nextFlowerImgs;
   nextFlowerImgs = [];
@@ -468,15 +483,19 @@ function addFlower(wx, wy, hsl) {
   }
 }
 
+// Resizes the canvas when the browser window changes size
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
 }
 
+// Toggles fullscreen mode on mouse click
 function mousePressed() {
   if (!fullscreen()) fullscreen(true);
   else fullscreen(false);
 }
 
+// Keyboard controls: M=mute, R=rain, S=sunny, T=storm,
+// D=dawn, N=night, G=golden hour, H=toggle hats, arrows=day speed
 function keyPressed() {
   if (key === 'm' || key === 'M') {
     if (birds && birds.isPlaying()) birds.pause();
