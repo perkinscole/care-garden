@@ -157,9 +157,6 @@ function drawFaceDecorations(detections) {
     const ty = faceSmileData[key].smoothTy;
     const fw = faceSmileData[key].smoothFw;
 
-    // 50% chance to skip decoration this frame (performance)
-    if (frameCount % 2 === 0 && i % 2 === 1) continue;
-
     let deco = faceSmileData[key].decoration;
 
     // Force hat images during hat time (rain or random)

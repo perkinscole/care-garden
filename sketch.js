@@ -411,42 +411,23 @@ if (groundhog) {
     groupSnapAlpha -= 3;
   }
 
-  // Hat Time — triggers on rain OR randomly
+  // Hat Time — only when raining
   const isRaining = weatherState === 'rainy' || weatherState === 'stormy';
   if (isRaining && !wasRaining) {
     hatTimeActive = true;
     hatTimeAlpha = 255;
-    hatTimeDuration = 0; // rain controls duration
   }
-  wasRaining = isRaining;
-
-  // Random hat time events (when not already active)
-  if (!hatTimeActive && !isRaining) {
-    hatTimeTimer--;
-    if (hatTimeTimer <= 0) {
-      hatTimeActive = true;
-      hatTimeAlpha = 255;
-      hatTimeDuration = floor(random(300, 900)); // 5-15 seconds
-      hatTimeTimer = floor(random(1800, 5400));  // next one in 30-90 seconds
-    }
-  }
-
-  // End random hat time when duration expires
-  if (hatTimeActive && !isRaining && hatTimeDuration > 0) {
-    hatTimeDuration--;
-    if (hatTimeDuration <= 0) hatTimeActive = false;
-  }
-  // End rain hat time when rain stops
-  if (hatTimeActive && !isRaining && hatTimeDuration === 0) {
+  if (!isRaining && wasRaining) {
     hatTimeActive = false;
   }
+  wasRaining = isRaining;
 
   if (hatTimeAlpha > 0) {
     push();
     noStroke(); fill(200, 70, 60, hatTimeAlpha);
     textAlign(CENTER, CENTER); textStyle(BOLD);
     textSize(34);
-    text('Hat Time!', width / 2, splitY() - 75);
+    text("It's raining, put on a hat!", width / 2, splitY() - 75);
     pop();
     hatTimeAlpha -= 2;
   }
