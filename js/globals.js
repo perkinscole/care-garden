@@ -15,6 +15,9 @@ let postSnapPause  = 0;
 
 // Score & gallery
 let careScore = 0;
+let smileStats = { today: 0, week: 0, record: 0, recordDate: '' };
+let statsCycleIdx = 0;
+let statsCycleTimer = 0;
 let smileGallery = [];
 let lastGalleryUpdate = 0;
 let updateInterval = 3000;

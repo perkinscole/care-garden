@@ -1,5 +1,94 @@
 // ── UI: Speech Bubbles, Panels, Gallery, Confetti ────
 
+// ── Smile Stats (localStorage) ──────────────────────
+
+function localDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
+function getTodayKey() {
+  return localDateStr(new Date());
+}
+
+function getWeekDays() {
+  // Returns array of 7 date keys (Sun–Sat) for the current week
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0=Sun
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + i);
+    days.push(localDateStr(d));
+  }
+  return days;
+}
+
+function loadSmileStats() {
+  try {
+    const raw = localStorage.getItem('careGardenStats');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    const today = getTodayKey();
+
+    // Today's count
+    smileStats.today = (data.dailyCounts && data.dailyCounts[today]) || 0;
+
+    // Week total — sum all days in current week
+    smileStats.week = 0;
+    if (data.dailyCounts) {
+      for (let key of getWeekDays()) {
+        smileStats.week += (data.dailyCounts[key] || 0);
+      }
+    }
+
+    // Record day
+    smileStats.record = data.record || 0;
+    smileStats.recordDate = data.recordDate || '';
+
+    // Restore careScore from today and sync milestones
+    careScore = smileStats.today;
+    for (let m of CONFETTI_MILESTONES) {
+      if (careScore >= m) lastMilestoneCelebrated = m;
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function saveSmileStats(added) {
+  try {
+    const raw = localStorage.getItem('careGardenStats');
+    const data = raw ? JSON.parse(raw) : { dailyCounts: {}, record: 0, recordDate: '' };
+    if (!data.dailyCounts) data.dailyCounts = {};
+
+    const today = getTodayKey();
+    data.dailyCounts[today] = (data.dailyCounts[today] || 0) + added;
+
+    // Update record
+    if (data.dailyCounts[today] > (data.record || 0)) {
+      data.record = data.dailyCounts[today];
+      data.recordDate = today;
+    }
+
+    // Clean up old entries (keep last 14 days)
+    const keys = Object.keys(data.dailyCounts).sort();
+    while (keys.length > 14) {
+      delete data.dailyCounts[keys.shift()];
+    }
+
+    localStorage.setItem('careGardenStats', JSON.stringify(data));
+
+    // Update live stats
+    smileStats.today = data.dailyCounts[today];
+    smileStats.week = 0;
+    for (let key of getWeekDays()) {
+      smileStats.week += (data.dailyCounts[key] || 0);
+    }
+    smileStats.record = data.record;
+    smileStats.recordDate = data.recordDate;
+  } catch (e) { /* ignore */ }
+}
+
 // ── SpeechBubble ─────────────────────────────────────
 
 class SpeechBubble {
@@ -268,15 +357,43 @@ function drawCareScore(ox) {
   textSize(min(panelW * 0.09, 16));
   text("CARE GARDEN DASHBOARD", panelW / 2, 20);
 
+  // Cycle through stats every 4 seconds
+  statsCycleTimer++;
+  if (statsCycleTimer > 240) {
+    statsCycleTimer = 0;
+    statsCycleIdx = (statsCycleIdx + 1) % 3;
+  }
+
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const todayName = dayNames[new Date().getDay()];
+  let recordLabel = "RECORD DAY:";
+  if (smileStats.recordDate) {
+    const parts = smileStats.recordDate.split('-');
+    const rd = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    recordLabel = "RECORD (" + dayNames[rd.getDay()] + "):";
+  }
+  const statsLabels = [
+    todayName.toUpperCase() + "'S SMILES:",
+    "THIS WEEK:",
+    recordLabel
+  ];
+  const statsValues = [
+    smileStats.today,
+    smileStats.week,
+    smileStats.record
+  ];
+
   textStyle(NORMAL); textSize(min(panelW * 0.06, 12));
   fill(0, 0, 75);
-  text("TOTAL SMILES & FLOWERS:", panelW / 2, 45);
+  text(statsLabels[statsCycleIdx], panelW / 2, 45);
 
   const pulse = 1 + (sunGlow * 0.1);
-  fill(55, 85, 75);
+  const statHues = [55, 200, 340];
+  fill(statHues[statsCycleIdx], 85, 75);
   textSize(min(panelW * 0.25, 50) * pulse);
   textStyle(BOLD);
-  text(careScore, panelW / 2, 60);
+  text(statsValues[statsCycleIdx], panelW / 2, 60);
+
 
   const letters = ['C','A','R','E'];
   const words   = ['Compassion','Acceptance','Respect','Effort'];
@@ -300,6 +417,13 @@ function drawCareScore(ox) {
     text(words[i], bx + boxSize/2, blockY + boxSize + 8);
   }
 
+  // Stat dots indicator — above CARE boxes
+  const dotY = blockY - 12;
+  for (let i = 0; i < 3; i++) {
+    fill(0, 0, i === statsCycleIdx ? 90 : 40);
+    ellipse(panelW / 2 + (i - 1) * 12, dotY, 5, 5);
+  }
+
   textAlign(CENTER, BOTTOM); fill(0, 0, 100); textStyle(BOLD);
   const footerSize = min(panelW * 0.06, 50);
   textSize(footerSize); textLeading(footerSize * 1.5);
@@ -316,12 +440,12 @@ function checkMilestone() {
       launchConfetti();
       if (m === 67 && milestone67Sound && !milestone67Sound.isPlaying()) {
         milestone67Sound.play();
-        setTimeout(() => { if (milestone67Sound.isPlaying()) milestone67Sound.stop(); }, 10000);
+        setTimeout(() => { if (milestone67Sound.isPlaying()) milestone67Sound.stop(); }, 6000);
       } else if (milestoneSounds.length > 0) {
         const s = milestoneSounds[floor(random(milestoneSounds.length))];
         if (s && !s.isPlaying()) {
           s.play();
-          setTimeout(() => { if (s.isPlaying()) s.stop(); }, 10000);
+          setTimeout(() => { if (s.isPlaying()) s.stop(); }, 6000);
         }
       }
       break;

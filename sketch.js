@@ -5,6 +5,7 @@ function setup() {
   canvas.id("canvas");
   colorMode(HSL, 360, 100, 100, 255);
   document.getElementById('canvas').style.fontFamily = 'Nunito, sans-serif';
+  loadSmileStats();
 
   video = createCapture(VIDEO, function(stream) {
     const track    = stream.getVideoTracks()[0];
@@ -46,22 +47,10 @@ rain= loadSound('sounds/rain.mp3', () => { rain.setVolume(0.2); });
 
   milestone67Sound = loadSound('sounds/milestone67.mp3', () => { milestone67Sound.setVolume(0.15); });
   const msFiles = [
-    'sounds/milestone_one.mp3', 'sounds/milestone_two.mp3',
-    'sounds/milestone_eight.mp3', 'sounds/milestone_nine.mp3', 'sounds/milestone_ten.mp3',
-    'sounds/milestone_eleven.mp3', 'sounds/milestone_thirteen.mp3',
-    'sounds/milestone_sixteen.mp3'
+    'sounds/milestone_ten.mp3'
   ];
   for (let f of msFiles) {
     loadSound(f, function(s) { s.setVolume(0.15); milestoneSounds.push(s); });
-  }
-
-  const photoFiles = [
-    'sounds/photo_five.mp3', 'sounds/photo_six.mp3', 'sounds/photo_seven.mp3',
-    'sounds/photo_twelve.mp3', 'sounds/photo_fourteen.mp3', 'sounds/photo_fifteen.mp3',
-    'sounds/photo_seventeen.mp3'
-  ];
-  for (let f of photoFiles) {
-    loadSound(f, function(s) { s.setVolume(0.2); photoSounds.push(s); });
   }
 
 
@@ -309,15 +298,6 @@ if (groundhog) {
       lastSnapTime     = millis();
       postSnapPause    = 90;
 
-      // Small chance to play a random photo sound (max 10 seconds)
-      if (photoSounds.length > 0 && random() < 0.10) {
-        const ps = photoSounds[floor(random(photoSounds.length))];
-        if (ps && !ps.isPlaying()) {
-          ps.play();
-          setTimeout(() => { if (ps.isPlaying()) ps.stop(); }, 10000);
-        }
-      }
-
       const triggerBox = detections[i].alignedRect._box;
       const triggerCX  = triggerBox._x + triggerBox._width / 2;
       const triggerCY  = triggerBox._y + triggerBox._height / 2;
@@ -360,6 +340,7 @@ if (groundhog) {
           const validImgs = isFrameSafe(predictions) ? groupImgs : [];
           if (validImgs.length > 0) {
             careScore += validImgs.length;
+            saveSmileStats(validImgs.length);
             checkMilestone();
             nextFlowerImgs = validImgs;
             pendingPhoto   = triggerImg;
@@ -376,6 +357,7 @@ if (groundhog) {
       } else {
         // Model not loaded yet — allow through
         careScore += groupImgs.length;
+        saveSmileStats(groupImgs.length);
         checkMilestone();
         nextFlowerImgs = groupImgs;
         pendingPhoto   = triggerImg;
