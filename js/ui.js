@@ -288,6 +288,7 @@ function drawCardSprite(id, cx, cy, panelW) {
     push(); translate(8 * sc * 18, 0); scale(sc * 1.4);
     drawKidShape(t * 0.2 + 2.1, 'idle', 1, 270, 140, 58, 25, 28, false, 0, true, null, 0); pop();
   }
+  else if (id === 'mrconant')  { scale(sc * 2.2); drawConantShape(sin(t * 0.05) * 0.5, 'speak', 1); }
   else if (id === 'principal') { scale(sc * 2.0); drawPrincipalShape(sin(t * 0.05) * 0.3, 'welcome', 1); }
   else if (id === 'staff') {
     // Group of teacher silhouettes

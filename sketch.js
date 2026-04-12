@@ -112,6 +112,7 @@ rain= loadSound('sounds/rain.mp3', () => { rain.setVolume(0.2); });
   weatherDuration  = 3600;
 
   mrPerkinsTimer = floor(random(1800, 3600));
+  mrConantTimer = floor(random(5400, 10800));
 
   panelCycle = getPanelCycle();
 }
@@ -206,6 +207,14 @@ if (groundhog) {
   }
   if (mrPerkins) { mrPerkins.update(); if (mrPerkins.done) mrPerkins = null; }
 
+  // Mr. Conant — less frequent than Mr. Perkins
+  mrConantTimer--;
+  if (mrConantTimer <= 0 && mrConant === null) {
+    mrConant = new MrConant();
+    mrConantTimer = floor(random(7200, 14400)); // ~2-4 min between appearances
+  }
+  if (mrConant) { mrConant.update(); if (mrConant.done) mrConant = null; }
+
   // Principal update
   if (principal) { principal.update(); if (principal.done) principal = null; }
 
@@ -263,6 +272,7 @@ if (groundhog) {
   renderList.push(         { wy: goose.wy,    draw: () => goose.draw() });
   renderList.push(         { wy: cat.wy,      draw: () => cat.draw() });
   if (mrPerkins) renderList.push({ wy: mrPerkins.wy, draw: () => mrPerkins.draw() });
+  if (mrConant) renderList.push({ wy: mrConant.wy, draw: () => mrConant.draw() });
   for (let k of kids)    renderList.push({ wy: k.wy, draw: () => k.draw() });
   for (let r of rabbits) renderList.push({ wy: r.wy, draw: () => r.draw() });
   if (groundhog) renderList.push({ wy: groundhog.wy, draw: () => groundhog.draw() });
@@ -573,4 +583,14 @@ function keyPressed() {
   if (key === 'h' || key === 'H') { decorationsEnabled = !decorationsEnabled; }
   if (keyCode === UP_ARROW)   { daySpeed = min(daySpeed * 2, 64); }
   if (keyCode === DOWN_ARROW) { daySpeed = max(daySpeed / 2, 1); }
+  if (keyCode === LEFT_ARROW) {
+    panelCycleIdx = (panelCycleIdx - 1 + panelCycle.length) % panelCycle.length;
+    panelMode = panelCycle[panelCycleIdx];
+    panelModeTimer = millis();
+  }
+  if (keyCode === RIGHT_ARROW) {
+    panelCycleIdx = (panelCycleIdx + 1) % panelCycle.length;
+    panelMode = panelCycle[panelCycleIdx];
+    panelModeTimer = millis();
+  }
 }

@@ -119,7 +119,12 @@ const CHARACTER_CARDS = [
     color:[0,0,18]
   },
   {
-    id:'principal', name:'MS. MANNING', title:'Principal',
+    id:'mrconant', name:'MR. CONANT', title:'Head of the CARE Team',
+    body:'A beloved teacher and proud member of the community. Mr. Conant leads the CARE team with heart and is always looking out for his students. If you see him, he is probably looking for Adin or Erin.',
+    color:[200,50,38]
+  },
+  {
+    id:'principal', name:'PRINCIPAL MANNING', title:'Principal',
     body:'Ms. Manning greets every student with a smile and opens the door rain or shine. She leads Robert Adams with heart and makes sure everyone feels welcome.',
     color:[320,50,42]
   },
@@ -155,6 +160,13 @@ const PERKINS_PHRASES = [
   "I love RAMS!", "What a beautiful garden!", "Go Rams!",
   "Keep smiling!", "This is amazing!", "I'm so proud of you all!",
   "What a great community!", "CARE makes a difference!"
+];
+
+// Mr. Conant (CARE team lead) phrases
+const CONANT_PHRASES = [
+  "What an awesome garden!", "Go Patriots!",
+  "Where's Adin?", "Where's Erin?",
+  "CARE makes us stronger!", "Keep being kind!"
 ];
 
 // Principal (Ms. Manning) phrases
