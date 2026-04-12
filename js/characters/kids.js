@@ -283,7 +283,7 @@ if (frameCount % 90 === 0 && random() < 0.3 && !this.heldFlower) {
   }
 }
 // Draws a child figure with randomized clothing, hair, hat, and optional held flower.
-function drawKidShape(phase, state, dir, shirtHue, pantsHue, skinL, hairHue, hairL, hasHat, hatHue, hasPonytail, heldFlower, pickTimer) {
+function drawKidShape(phase, state, dir, shirtHue, pantsHue, skinL, hairHue, hairL, hasHat, hatHue, hasPonytail, heldFlower, pickTimer, hasBackpack) {
   const walking = (state === 'wander' || state === 'enter' || state === 'return' || state === 'carry' || state === 'approachFlower'|| state === 'approachPet');
   const crouching = state === 'pickFlower';
   push();
@@ -309,6 +309,19 @@ function drawKidShape(phase, state, dir, shirtHue, pantsHue, skinL, hairHue, hai
   fill(20, 20, 18);
   ellipse( 3 + (crouching ? -4 : lSwing),  20, 7, 4);
   ellipse( 9 + (crouching ? 9 : -lSwing),  20, 7, 4);
+
+  // Backpack (drawn behind body, visible on back side)
+  if (hasBackpack && !crouching) {
+    fill((shirtHue + 120) % 360, 55, 35); noStroke();
+    rect(-6, -20 + crouchY, 12, 18, 3);
+    // Straps
+    fill((shirtHue + 120) % 360, 45, 28);
+    rect(-5, -20 + crouchY, 3, 12, 1);
+    rect(4, -20 + crouchY, 3, 12, 1);
+    // Pocket
+    fill((shirtHue + 120) % 360, 40, 30);
+    rect(-2, -10 + crouchY, 8, 5, 1);
+  }
 
   // Body
   noStroke();
@@ -429,6 +442,68 @@ function keyPressed() {
     weatherTimer = 1800;
     weatherDuration = 1800;
     nextWeatherState = 'clearing';
+  }
+}
+
+// An arrival/departure kid that walks to/from the school with a backpack
+class ArrivalKid {
+  constructor(departing) {
+    this.departing = departing || false;
+    this.fromLeft = random() < 0.5;
+    this.dir = this.fromLeft ? 1 : -1;
+    this.speed = random(0.002, 0.004);
+    this.walkPhase = random(TWO_PI);
+    this.done = false;
+
+    // Random appearance
+    this.shirtHue = random(360);
+    this.pantsHue = random(360);
+    this.skinL = random(52, 78);
+    this.hairHue = random(20, 40);
+    this.hairL = random(18, 55);
+    this.height = random(0.78, 1.0);
+    this.hasHat = random() < 0.3;
+    this.hatHue = random(360);
+    this.hasPonytail = random() < 0.4;
+
+    if (this.departing) {
+      this.wx = 0.5 + random(-0.06, 0.06);
+      this.wy = random(0.03, 0.1);
+      this.twx = this.fromLeft ? -0.08 : 1.08;
+      this.twy = random(0.3, 0.7);
+      this.dir = this.twx < 0.5 ? -1 : 1;
+    } else {
+      this.wx = this.fromLeft ? -0.08 : 1.08;
+      this.wy = random(0.3, 0.7);
+      this.twx = 0.5 + random(-0.06, 0.06);
+      this.twy = random(0.02, 0.06);
+    }
+  }
+
+  update() {
+    const dx = this.twx - this.wx;
+    const dy = this.twy - this.wy;
+    const dist = sqrt(dx * dx + dy * dy);
+    if (dist > 0.02) {
+      this.wx += (dx / dist) * this.speed;
+      this.wy += (dy / dist) * this.speed;
+      this.walkPhase += 0.2;
+      this.dir = dx > 0 ? 1 : -1;
+    } else {
+      this.done = true;
+    }
+  }
+
+  draw() {
+    const { sx, sy } = worldToScreen(this.wx, this.wy);
+    const ds = depthScale(this.wy);
+    push();
+    translate(sx, sy);
+    scale(ds * this.height * 1.4);
+    drawKidShape(this.walkPhase, 'enter', this.dir, this.shirtHue, this.pantsHue,
+                 this.skinL, this.hairHue, this.hairL, this.hasHat, this.hatHue,
+                 this.hasPonytail, null, 0, true);
+    pop();
   }
 }
 

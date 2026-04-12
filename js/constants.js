@@ -117,6 +117,16 @@ const CHARACTER_CARDS = [
     id:'cat', name:'THE CAT', title:'Self-Appointed Garden Supervisor',
     body:'Nobody hired her. Nobody asked. But she shows up every day to inspect the flowers, stalk the butterflies, and nap in the sun. She tolerates the rain about as well as she tolerates everyone else.',
     color:[0,0,18]
+  },
+  {
+    id:'principal', name:'MS. MANNING', title:'Principal',
+    body:'Ms. Manning greets every student with a smile and opens the door rain or shine. She leads Robert Adams with heart and makes sure everyone feels welcome.',
+    color:[320,50,42]
+  },
+  {
+    id:'staff', name:'OUR STAFF', title:'Teachers, Administrators & Staff',
+    body:'Our wonderful teachers, administrators, and staff — like our amazing custodian Pedroh — show up every day ready to work and make our school run! Thank you for everything you do!',
+    color:[280,45,40]
   }
 ];
 
@@ -145,4 +155,22 @@ const PERKINS_PHRASES = [
   "I love RAMS!", "What a beautiful garden!", "Go Rams!",
   "Keep smiling!", "This is amazing!", "I'm so proud of you all!",
   "What a great community!", "CARE makes a difference!"
+];
+
+// Principal (Ms. Manning) phrases
+const PRINCIPAL_PHRASES = [
+  "Good morning!", "Welcome to Robert Adams!",
+  "Have a wonderful day!", "Go Rams!",
+  "Learn something new today!", "You make us proud!"
+];
+
+// Teacher names for speech bubbles during arrival
+const TEACHER_NAMES = [
+  "Ms. Going", "Ms. Rice", "Ms. Gavan", "Ms. Malinn",
+  "Mr. Nauss", "Mr. Perry"
+];
+
+const TEACHER_GREETINGS = [
+  "Good morning!", "Ready to learn!", "Let's go, Rams!",
+  "Great day ahead!", "Hello everyone!", "Go Rams!"
 ];

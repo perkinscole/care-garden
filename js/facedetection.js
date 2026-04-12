@@ -199,34 +199,35 @@ function drawFaceDecorations(detections) {
 // Pre-processed hat images with backgrounds removed
 let cleanHatImages = [];
 let hatsProcessed = false;
+let hatProcessIdx = 0;
 
-// Removes black and green backgrounds from hat images to create transparent overlays
+// Processes one hat image per frame to avoid freezing (large images ~1MB each)
 function processHatImages() {
   if (hatsProcessed || hatImages.length === 0) return;
   // Check all images are loaded
   for (let img of hatImages) {
     if (!img || img.width === 0) return;
   }
-  for (let idx = 0; idx < hatImages.length; idx++) {
+  // Process one hat per frame
+  if (hatProcessIdx < hatImages.length) {
+    const idx = hatProcessIdx;
     const src = hatImages[idx];
     const g = createGraphics(src.width, src.height);
     g.image(src, 0, 0);
     g.loadPixels();
     for (let i = 0; i < g.pixels.length; i += 4) {
       const r = g.pixels[i], gv = g.pixels[i+1], b = g.pixels[i+2];
-      // Remove black backgrounds (hat1, hat2)
       if (r < 30 && gv < 30 && b < 30) {
         g.pixels[i+3] = 0;
-      }
-      // Remove green backgrounds (hat3, hat4, hat5)
-      else if (gv > 80 && r < gv * 0.75 && b < gv * 0.75) {
+      } else if (gv > 80 && r < gv * 0.75 && b < gv * 0.75) {
         g.pixels[i+3] = 0;
       }
     }
     g.updatePixels();
     cleanHatImages[idx] = g;
+    hatProcessIdx++;
   }
-  hatsProcessed = true;
+  if (hatProcessIdx >= hatImages.length) hatsProcessed = true;
 }
 
 // Draws a pre-processed hat image centered above a detected face

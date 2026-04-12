@@ -55,6 +55,12 @@ let mrPerkinsTimer = 0;
 let characterPositions = [];
 let groundhog = null;
 let groundhogTimer = 0;
+let principal = null;
+let teachers = [];
+let arrivalKids = [];
+let wasDawn = false;
+let wasDusk = false;
+let arrivalSpawnTimer = 0;
 
 // Ambient creatures (butterflies, etc.) and bird flock arrays
 let creatures   = [];

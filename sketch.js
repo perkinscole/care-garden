@@ -129,6 +129,9 @@ function draw() {
   if (random() < 0.008) windTarget = random(-1, 1);
   windX += (windTarget - windX) * 0.004;
 
+  // Pre-process hat images one per frame (avoids freeze when hat time starts)
+  if (!hatsProcessed) processHatImages();
+
   // Advance day/night cycle
   dayNightT += daySpeed;
   timeOfDay = (dayNightT % DAY_CYCLE_DURATION) / DAY_CYCLE_DURATION;
@@ -203,6 +206,49 @@ if (groundhog) {
   }
   if (mrPerkins) { mrPerkins.update(); if (mrPerkins.done) mrPerkins = null; }
 
+  // Principal update
+  if (principal) { principal.update(); if (principal.done) principal = null; }
+
+  // Teachers and arrival kids update
+  for (let tc of teachers) tc.update();
+  teachers = teachers.filter(tc => !tc.done);
+  for (let ak of arrivalKids) ak.update();
+  arrivalKids = arrivalKids.filter(ak => !ak.done);
+
+  // Dawn/dusk arrival events — staggered spawning via frame counter
+  const isDawn = timeOfDay > 0.05 && timeOfDay < 0.12;
+  const isDusk = timeOfDay > 0.62 && timeOfDay < 0.70;
+
+  if (isDawn && !wasDawn) {
+    if (!principal) principal = new Principal('dawn');
+    arrivalSpawnTimer = 1; // start staggered spawning
+  }
+  wasDawn = isDawn;
+
+  if (isDusk && !wasDusk) {
+    if (!principal) principal = new Principal('dusk');
+    arrivalSpawnTimer = -1; // negative = departing
+  }
+  wasDusk = isDusk;
+
+  // Staggered spawning: one new character every 30 frames
+  if (arrivalSpawnTimer !== 0) {
+    const departing = arrivalSpawnTimer < 0;
+    const count = abs(arrivalSpawnTimer);
+    if (count % 30 === 1) {
+      const wave = floor(count / 30);
+      if (wave < 5) {
+        arrivalKids.push(new ArrivalKid(departing));
+      }
+      if (wave < 3 && wave % 2 === 0) {
+        teachers.push(new Teacher(departing));
+      }
+    }
+    if (departing) arrivalSpawnTimer--;
+    else arrivalSpawnTimer++;
+    if (abs(arrivalSpawnTimer) > 180) arrivalSpawnTimer = 0; // done after 3 seconds
+  }
+
   // Bird flock management
   if (frameCount % 300 === 0 && birds_flock.length < 8 && random() < 0.6) {
     birds_flock.push(new Bird());
@@ -220,6 +266,9 @@ if (groundhog) {
   for (let k of kids)    renderList.push({ wy: k.wy, draw: () => k.draw() });
   for (let r of rabbits) renderList.push({ wy: r.wy, draw: () => r.draw() });
   if (groundhog) renderList.push({ wy: groundhog.wy, draw: () => groundhog.draw() });
+  if (principal) renderList.push({ wy: principal.wy, draw: () => principal.draw() });
+  for (let tc of teachers)     renderList.push({ wy: tc.wy, draw: () => tc.draw() });
+  for (let ak of arrivalKids)  renderList.push({ wy: ak.wy, draw: () => ak.draw() });
 
   renderList.sort((a, b) => a.wy - b.wy);
   for (let item of renderList) item.draw();
@@ -428,6 +477,8 @@ if (groundhog) {
   if (isRaining && !wasRaining) {
     hatTimeActive = true;
     hatTimeAlpha = 255;
+    // Principal comes to the door when it rains
+    if (!principal) principal = new Principal('rain');
   }
   if (!isRaining && wasRaining) {
     hatTimeActive = false;
