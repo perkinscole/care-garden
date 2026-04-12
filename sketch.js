@@ -2,7 +2,7 @@
 // File: sketch.js
 // Author: Cole Perkins
 // Date Created: March 28, 2026 (refactored April 1, 2026)
-// Last Modified: April 11, 2026
+// Last Modified: April 12, 2026
 // Description: Main entry point containing p5.js setup() and draw()
 //              functions. Initializes all systems (video, face detection,
 //              sounds, characters, weather) and runs the core render loop.

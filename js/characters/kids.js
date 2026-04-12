@@ -2,7 +2,7 @@
 // File: kids.js
 // Author: Cole Perkins
 // Date Created: March 28, 2026 (refactored April 1, 2026)
-// Last Modified: April 11, 2026
+// Last Modified: April 12, 2026
 // Description: Defines the Kid class for children who exit the school, wander
 //   the garden, pick flowers, pet the ram, then return inside.
 // ================================================================
@@ -480,6 +480,7 @@ class ArrivalKid {
     }
   }
 
+  // Walks toward the target position; marks done on arrival
   update() {
     const dx = this.twx - this.wx;
     const dy = this.twy - this.wy;
@@ -494,6 +495,7 @@ class ArrivalKid {
     }
   }
 
+  // Renders the arrival kid sprite with a backpack at its depth-scaled position
   draw() {
     const { sx, sy } = worldToScreen(this.wx, this.wy);
     const ds = depthScale(this.wy);

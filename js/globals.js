@@ -2,7 +2,7 @@
 // File: globals.js
 // Author: Cole Perkins
 // Date Created: March 28, 2026 (refactored April 1, 2026)
-// Last Modified: April 11, 2026
+// Last Modified: April 12, 2026
 // Description: Declares all mutable global state variables used
 //   across the CARE Garden application at runtime.
 // ================================================================

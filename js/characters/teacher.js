@@ -2,7 +2,7 @@
 // File: teacher.js
 // Author: Cole Perkins
 // Date Created: April 11, 2026
-// Last Modified: April 11, 2026
+// Last Modified: April 12, 2026
 // Description: Teacher characters that walk to/from the school during
 //   dawn and dusk arrival/departure events. Each teacher has a random
 //   appearance and can display a greeting speech bubble.

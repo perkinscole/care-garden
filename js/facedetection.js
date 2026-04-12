@@ -2,7 +2,7 @@
 // File: facedetection.js
 // Author: Cole Perkins
 // Date Created: March 28, 2026 (refactored April 1, 2026)
-// Last Modified: April 11, 2026
+// Last Modified: April 12, 2026
 // Description: Face detection with smile recognition and head
 //   decorations. Tracks smile hold durations, renders countdown
 //   timers, and draws hats, crowns, horns, and other accessories

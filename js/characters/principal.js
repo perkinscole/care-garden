@@ -2,7 +2,7 @@
 // File: principal.js
 // Author: Cole Perkins
 // Date Created: April 11, 2026
-// Last Modified: April 11, 2026
+// Last Modified: April 12, 2026
 // Description: Ms. Manning, the principal of Robert Adams Middle School.
 //   Appears at the school door during dawn, dusk, and rain to greet
 //   students and welcome them inside.
