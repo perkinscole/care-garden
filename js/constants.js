@@ -120,7 +120,7 @@ const CHARACTER_CARDS = [
   },
   {
     id:'mrconant', name:'MR. CONANT', title:'Head of the CARE Team',
-    body:'A beloved teacher and proud member of the community. Mr. Conant leads the CARE team with heart and is always looking out for his students. If you see him, he is probably looking for Adin or Erin.',
+    body:'A beloved teacher and proud member of the community. Mr. Conant leads the CARE team with heart and is always looking out for his students. If you see him, he is probably looking for Adin or Mrs. Conant.',
     color:[200,50,38]
   },
   {
@@ -165,7 +165,7 @@ const PERKINS_PHRASES = [
 // Mr. Conant (CARE team lead) phrases
 const CONANT_PHRASES = [
   "What an awesome garden!", "Go Patriots!",
-  "Where's Adin?", "Where's Erin?",
+  "Where's Adin?", "Where's Mrs. Conant?",
   "CARE makes us stronger!", "Keep being kind!"
 ];
 
