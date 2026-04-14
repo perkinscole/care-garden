@@ -31,14 +31,23 @@ this.poops = [];
 
   // Searches flowers array for one within grazing range and returns its index, or -1.
   findNearbyFlower() {
+    // Never eat below 50 flowers so the garden always looks full
+    if (flowers.length <= 50) return -1;
+    // Prefer faceless flowers (poop flowers) over ones with faces
+    let faceless = -1;
+    let withFace = -1;
     for (let i = 0; i < flowers.length; i++) {
       const f = flowers[i];
       if (f.size < 0.05) continue; // already eaten/tiny
       const dx = f.wx - this.wx;
       const dy = f.wy - this.wy;
-      if (sqrt(dx*dx + dy*dy) < 0.12) return i;
+      if (sqrt(dx*dx + dy*dy) < 0.12) {
+        if (f.imgs.length === 0 && faceless < 0) faceless = i;
+        else if (f.imgs.length > 0 && withFace < 0) withFace = i;
+      }
+      if (faceless >= 0) break; // found a faceless one, no need to keep looking
     }
-    return -1;
+    return faceless >= 0 ? faceless : withFace;
   }
 
   // Advances the ram's state machine each frame: blinking, storm panic, wandering, eating, and pooping.
@@ -77,7 +86,10 @@ if (isStormy) {
       const dy = this.twy - this.wy;
       const d  = sqrt(dx*dx + dy*dy);
       
-      this.poopTimer--;
+      // Only poop if there are fewer than 5 faceless flowers + active poops
+      const facelessCount = flowers.filter(f => f.imgs.length === 0).length + this.poops.length;
+      if (facelessCount < 5) {
+        this.poopTimer--;
         if (this.poopTimer <= 0) {
           // offset to butt: tail is at draw-space x=-27 (behind ram), scaled by ds*2.2
           const spawnDs = depthScale(this.wy);
@@ -86,6 +98,7 @@ if (isStormy) {
           if (fart && !fart.isPlaying()) fart.play();
           this.poopTimer = floor(random(400, 800));
         }
+      }
       
       if (isStormy && frameCount % 40 === 0 && random() < 0.6) {
   if (sheep && !sheep.isPlaying()) sheep.play();
