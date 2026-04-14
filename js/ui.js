@@ -38,34 +38,45 @@ function getWeekDays() {
   return days;
 }
 
-// Loads smile statistics from localStorage and syncs careScore and milestones
+// Applies parsed stats data to live state variables
+function applyStatsData(data) {
+  const today = getTodayKey();
+  smileStats.today = (data.dailyCounts && data.dailyCounts[today]) || 0;
+  smileStats.week = 0;
+  if (data.dailyCounts) {
+    for (let key of getWeekDays()) {
+      smileStats.week += (data.dailyCounts[key] || 0);
+    }
+  }
+  smileStats.record = data.record || 0;
+  smileStats.recordDate = data.recordDate || '';
+  careScore = smileStats.today;
+  for (let m of CONFETTI_MILESTONES) {
+    if (careScore >= m) lastMilestoneCelebrated = m;
+  }
+}
+
+// Loads smile statistics: tries server (stats.json) first, falls back to localStorage
 function loadSmileStats() {
+  // Try loading from server synchronously so data is ready before first draw
   try {
-    const raw = localStorage.getItem('careGardenStats');
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    const today = getTodayKey();
-
-    // Today's count
-    smileStats.today = (data.dailyCounts && data.dailyCounts[today]) || 0;
-
-    // Week total — sum all days in current week
-    smileStats.week = 0;
-    if (data.dailyCounts) {
-      for (let key of getWeekDays()) {
-        smileStats.week += (data.dailyCounts[key] || 0);
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/stats', false); // synchronous
+    xhr.send();
+    if (xhr.status === 200) {
+      const data = JSON.parse(xhr.responseText);
+      if (data && data.dailyCounts) {
+        applyStatsData(data);
+        localStorage.setItem('careGardenStats', JSON.stringify(data));
+        return;
       }
     }
+  } catch (e) { /* server unavailable, fall through */ }
 
-    // Record day
-    smileStats.record = data.record || 0;
-    smileStats.recordDate = data.recordDate || '';
-
-    // Restore careScore from today and sync milestones
-    careScore = smileStats.today;
-    for (let m of CONFETTI_MILESTONES) {
-      if (careScore >= m) lastMilestoneCelebrated = m;
-    }
+  // Fallback to localStorage
+  try {
+    const raw = localStorage.getItem('careGardenStats');
+    if (raw) applyStatsData(JSON.parse(raw));
   } catch (e) { /* ignore */ }
 }
 
@@ -92,6 +103,13 @@ function saveSmileStats(added) {
     }
 
     localStorage.setItem('careGardenStats', JSON.stringify(data));
+
+    // Also save to server (stats.json on disk)
+    fetch('/api/stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }).catch(() => { /* server save failed, localStorage still has it */ });
 
     // Update live stats
     smileStats.today = data.dailyCounts[today];

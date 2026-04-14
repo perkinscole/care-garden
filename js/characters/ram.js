@@ -25,7 +25,7 @@ class Ram {
     this.mouthOpen = 0;
     this.blinkTimer = floor(random(80, 200));
     this.blinking = false;
-    this.poopTimer = floor(random(300, 600));
+    this.poopTimer = floor(random(7200, 10800));
 this.poops = [];
   }
 
@@ -86,18 +86,18 @@ if (isStormy) {
       const dy = this.twy - this.wy;
       const d  = sqrt(dx*dx + dy*dy);
       
-      // Only poop if there are fewer than 5 faceless flowers + active poops
-      const facelessCount = flowers.filter(f => f.imgs.length === 0).length + this.poops.length;
-      if (facelessCount < 5) {
-        this.poopTimer--;
-        if (this.poopTimer <= 0) {
+      this.poopTimer--;
+      if (this.poopTimer <= 0) {
+        // Only actually poop if there are fewer than 5 faceless flowers + active poops
+        const facelessCount = flowers.filter(f => f.imgs.length === 0).length + this.poops.length;
+        if (facelessCount < 5) {
           // offset to butt: tail is at draw-space x=-27 (behind ram), scaled by ds*2.2
           const spawnDs = depthScale(this.wy);
           const buttWX = this.wx - this.dir * 27 * spawnDs * 2.2 / width;
           this.poops.push({ wx: buttWX, wy: this.wy, age: 0, dropY: -12 * spawnDs * 2.2 });
           if (fart && !fart.isPlaying()) fart.play();
-          this.poopTimer = floor(random(400, 800));
         }
+        this.poopTimer = floor(random(7200, 10800));
       }
       
       if (isStormy && frameCount % 40 === 0 && random() < 0.6) {
