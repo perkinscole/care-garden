@@ -31,8 +31,6 @@ this.poops = [];
 
   // Searches flowers array for one within grazing range and returns its index, or -1.
   findNearbyFlower() {
-    // Never eat below 50 flowers so the garden always looks full
-    if (flowers.length <= 50) return -1;
     // Prefer faceless flowers (poop flowers) over ones with faces
     let faceless = -1;
     let withFace = -1;
@@ -47,7 +45,10 @@ this.poops = [];
       }
       if (faceless >= 0) break; // found a faceless one, no need to keep looking
     }
-    return faceless >= 0 ? faceless : withFace;
+    // Always eat faceless flowers, but only eat face flowers if above 50 total
+    if (faceless >= 0) return faceless;
+    if (flowers.length > 50 && withFace >= 0) return withFace;
+    return -1;
   }
 
   // Advances the ram's state machine each frame: blinking, storm panic, wandering, eating, and pooping.
