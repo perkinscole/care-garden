@@ -130,6 +130,16 @@ function draw() {
   if (random() < 0.008) windTarget = random(-1, 1);
   windX += (windTarget - windX) * 0.004;
 
+  // Keep AudioContext alive — Chrome suspends it after extended idle
+  if (frameCount % 300 === 0) {
+    try {
+      const ctx = getAudioContext();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   // Pre-process hat images one per frame (avoids freeze when hat time starts)
   if (!hatsProcessed) processHatImages();
 
@@ -551,6 +561,7 @@ function windowResized() {
 
 // Toggles fullscreen mode on mouse click
 function mousePressed() {
+  userStartAudio(); // resume AudioContext on interaction
   if (!fullscreen()) fullscreen(true);
   else fullscreen(false);
 }
@@ -558,6 +569,7 @@ function mousePressed() {
 // Keyboard controls: M=mute, R=rain, S=sunny, T=storm,
 // D=dawn, N=night, G=golden hour, H=toggle hats, arrows=day speed
 function keyPressed() {
+  userStartAudio(); // resume AudioContext on interaction
   if (key === 'm' || key === 'M') {
     if (birds && birds.isPlaying()) birds.pause();
     else if (birds) birds.loop();
