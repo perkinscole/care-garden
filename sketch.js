@@ -140,6 +140,14 @@ function draw() {
     } catch (e) { /* ignore */ }
   }
 
+  // Face-detection stall watchdog — if ml5 hasn't ticked in 5s, clear stale
+  // detections (so hats/boxes stop drawing on ghost positions) and re-kick the loop.
+  if (lastFaceUpdate > 0 && millis() - lastFaceUpdate > 5000) {
+    detections = [];
+    try { if (faceapi) faceapi.detect(gotFaces); } catch (e) { /* ignore */ }
+    lastFaceUpdate = millis(); // debounce: give it 5s before next kick
+  }
+
   // Pre-process hat images one per frame (avoids freeze when hat time starts)
   if (!hatsProcessed) processHatImages();
 

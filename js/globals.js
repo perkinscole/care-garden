@@ -39,6 +39,9 @@ let confettiParticles = [];
 let faceSmileData = {};
 let lastSnapTime  = 0;
 
+// Timestamp of the last successful face-detection callback (for stall watchdog)
+let lastFaceUpdate = 0;
+
 // Video feed dimensions and canvas offset for centering
 let videoW, videoH;
 let videoOffsetX = 0;

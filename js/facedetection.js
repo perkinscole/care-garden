@@ -18,7 +18,15 @@ function faceReady() {
 
 // Callback that processes detection results, tracks smile frames per face, and re-triggers detection
 function gotFaces(error, result) {
-  if (error) { console.log(error); return; }
+  if (error) {
+    console.log(error);
+    // Reschedule anyway with a small backoff so one bad frame doesn't kill detection forever.
+    setTimeout(() => { try { faceapi.detect(gotFaces); } catch (e) { console.log(e); } }, 500);
+    return;
+  }
+
+  const now = millis();
+  lastFaceUpdate = now;
   detections = result;
   h = false;
 
@@ -46,9 +54,10 @@ function gotFaces(error, result) {
         }
       }
       const deco = inheritedDeco >= 0 ? inheritedDeco : Math.floor(Math.random() * 5);
-      faceSmileData[key] = { frames: 0, seen: true, snapped: false, decoration: deco };
+      faceSmileData[key] = { frames: 0, seen: true, snapped: false, decoration: deco, lastSeen: now };
     } else {
       faceSmileData[key].seen = true;
+      faceSmileData[key].lastSeen = now;
     }
 
     const happy = detections[i].expressions.happy * 100 > 75;
@@ -63,8 +72,12 @@ function gotFaces(error, result) {
     if (happy) h = true;
   }
 
+  // Prune entries that haven't been seen in 30s, bounding dict size across grid drift.
   for (let key in faceSmileData) {
-    if (!faceSmileData[key].seen) delete faceSmileData[key];
+    if (!faceSmileData[key].seen &&
+        (now - (faceSmileData[key].lastSeen || 0)) > 30000) {
+      delete faceSmileData[key];
+    }
   }
 
   faceapi.detect(gotFaces);
@@ -73,6 +86,8 @@ function gotFaces(error, result) {
 // Draws colored bounding boxes around detected faces (green if smiling, blue otherwise)
 function drawBoxes(detections) {
   if (detections.length === 0 || !videoW || !videoH) return;
+  // Don't draw boxes for stale detections (detection loop stalled)
+  if (lastFaceUpdate > 0 && millis() - lastFaceUpdate > 2000) return;
 
   const destH       = height - splitY();
   const videoAspect = videoW / videoH;
@@ -148,6 +163,8 @@ function drawFaceDecorations(detections) {
   if (!decorationsEnabled) return;
   if (!hatTimeActive) return;
   if (!videoW || !videoH || videoDisplayW === 0) return;
+  // Don't draw hats on stale faces (detection loop stalled — avoids frozen hats on screen)
+  if (lastFaceUpdate > 0 && millis() - lastFaceUpdate > 2000) return;
   const scaleFactor = videoDisplayW / videoW;
 
   for (let i = 0; i < detections.length; i++) {
