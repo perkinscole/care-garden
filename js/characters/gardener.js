@@ -16,6 +16,8 @@ const GARDENER_REACH_HIGH = 0.95;
 // Roughly how high the spout is in each case
 const GARDENER_SPOUT_LOW = 0.45;
 const GARDENER_SPOUT_HIGH = 0.85;
+// How far behind the spot she waters she stands
+const GARDENER_BEHIND = 0.3;
 
 // Gardener class handles the gardener's state machine (wander/water/shelter/flee/night),
 // watering can, droplet particles, umbrella display, and goose evasion.
@@ -57,22 +59,19 @@ class Gardener {
   }
 
   // Works out how to water a flower as it stands right now. Returns
-  // { high, x, z, land, front }: whether she lifts the can, the point (in
-  // blocks) the water should fall on, the height it lands at, and how far
-  // in front of that point she stands. A seedling or a low bloom is
-  // watered from above. Anything taller than she can lift the can is
-  // watered at the foot of its stem if she fits under the bloom, or else
-  // just beside the bloom, standing in front of the photo, not behind it.
-  // (Otherwise she stands a little behind the spot, so that the arm on our
-  // side, which holds the can, lines up with it.)
+  // { high, x, z, land }: whether she lifts the can, the point (in blocks)
+  // the water should fall on, and the height it lands at. A seedling or a
+  // low bloom is watered from above. Anything taller than she can lift the
+  // can is watered at the foot of its stem if she fits under the bloom, or
+  // else just beside the bloom.
   waterPlan(f) {
     const head = PEOPLE3.head3(f, 0), foot = PEOPLE3.foot3(f);
     const r = PEOPLE3.bloomR(f, 0);
     const top = head.y + r;
-    if (top <= GARDENER_SPOUT_LOW - 0.05) return { high: false, x: head.x, z: head.z, land: max(0, top - 0.1), front: -0.3 };
-    if (top <= GARDENER_SPOUT_HIGH - 0.05) return { high: true, x: head.x, z: head.z, land: max(0, top - 0.1), front: -0.3 };
-    if (head.y - r > PEOPLE3.headTop(this.look) + 0.15) return { high: false, x: foot.x, z: foot.z, land: 0, front: -0.3 };
-    return { high: true, x: head.x - this.waterSide * (r + 0.15), z: head.z, land: 0, front: 0.25 };
+    if (top <= GARDENER_SPOUT_LOW - 0.05) return { high: false, x: head.x, z: foot.z, land: max(0, top - 0.1) };
+    if (top <= GARDENER_SPOUT_HIGH - 0.05) return { high: true, x: head.x, z: foot.z, land: max(0, top - 0.1) };
+    if (head.y - r > PEOPLE3.headTop(this.look) + 0.15) return { high: false, x: foot.x, z: foot.z, land: 0 };
+    return { high: true, x: head.x - this.waterSide * (r + 0.15), z: foot.z, land: 0 };
   }
 
   // Searches the flowers for one within watering range and returns it, or null.
@@ -247,11 +246,12 @@ class Gardener {
         this.state = 'wander'; return;
       }
       // Stand beside the flower so the spout of the tipped can is over the
-      // spot to water (see waterPlan), and a touch nearer the front.
+      // spot to water (see waterPlan), and a little behind it, so that the
+      // arm on our side, which holds the can, lines up with it.
       const plan = this.waterPlan(f);
       const reach = plan.high ? GARDENER_REACH_HIGH : GARDENER_REACH_LOW;
       const tx = constrain(0.5 + (plan.x - this.waterSide * reach) / G3.GW, 0.02, 0.98);
-      const ty = constrain((plan.z + plan.front) / G3.GD, 0.04, 0.99);
+      const ty = constrain((plan.z - GARDENER_BEHIND) / G3.GD, 0.04, 0.99);
       const dx = tx - this.wx;
       const dy = ty - this.wy;
       const d = sqrt(dx * dx + dy * dy);
@@ -399,6 +399,7 @@ class Gardener {
         walk, side, face,
         arm: watering ? (high ? 'lift' : 'pour') : 'hang',
         lean: s === 'flee' ? 0.22 : watering ? 0.1 : 0,
+        look: watering ? (side === 'R' ? -0.5 : 0.5) : 0,     // glancing round at us
       });
       this.spout3 = PEOPLE3.worldPos(m, u.can.userData.spout, this.spout3);
     }

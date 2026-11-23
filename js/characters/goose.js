@@ -202,4 +202,4 @@ G3.cardArt('goose', () => {
   u.wings[0].rotation.z = 0.5;
   u.wings[1].rotation.z = -0.5;
   return m;
-}, { yaw: 0.9 });
+}, { w: 30, h: 38, yaw: 0.75 });

@@ -213,7 +213,7 @@ class Bird {
   // Poses the bird: standing, pecking or hopping on the ground with its
   // wings folded, or in the air with its wings beating.
   draw() {
-    const m = G3.model(this, () => ANIMALS3.bird(this.kind)), u = m.userData;
+    const m = G3.model(this, this._build || (this._build = () => ANIMALS3.bird(this.kind))), u = m.userData;
     m.scale.setScalar(0.85 + this.size * 0.3);
     const legs = u.legs, wings = u.wings;
 

@@ -377,4 +377,4 @@ class Ram {
 }
 
 // I SPY card: Ramy standing proud.
-G3.cardArt('ram', () => ANIMALS3.ram(), { yaw: 0.95 });
+G3.cardArt('ram', () => ANIMALS3.ram(), { w: 34, h: 36, yaw: 0.6 });

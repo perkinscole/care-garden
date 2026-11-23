@@ -254,7 +254,7 @@ class Cat {
 
   // Poses the cat for its state, plus floating "z"s when asleep.
   draw() {
-    const m = G3.model(this, () => ANIMALS3.cat(this.coat)), u = m.userData;
+    const m = G3.model(this, this._build || (this._build = () => ANIMALS3.cat(this.coat))), u = m.userData;
     const s = this.state;
     const tailFlick = sin(this.tailPhase) > 0.3;   // slow sway of the tail
     const pose = (s === 'sit') ? 'sit' : s === 'miss' ? 'lick' : s === 'sleep' ? 'sleep' :
@@ -332,4 +332,4 @@ G3.cardArt('cat', () => {
   const m = ANIMALS3.cat((typeof cat !== 'undefined' && cat) ? cat.coat : 'orange');
   ANIMALS3.poseCat(m, 'sit', 1);
   return m;
-}, { yaw: 0.6 });
+}, { w: 30, h: 38, yaw: 0.6 });
