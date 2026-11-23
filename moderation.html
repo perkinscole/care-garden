@@ -1,0 +1,48 @@
+<!--
+  ================================================================
+  File: moderation.html
+  Author: Cole Perkins
+  Date Created: November 22, 2026
+  Description: Runs the photo moderation model (nsfwjs) in its own hidden
+               frame. It has to live apart from the main page: nsfwjs and
+               the face-detection library each bundle a different version
+               of TensorFlow.js, and on one page the second to load breaks
+               ("makeTensor is not a function"), which silently left every
+               photo unchecked. The main page calls classifyFrame() here.
+               Nothing is uploaded: the model runs in the browser.
+  ================================================================
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdn.jsdelivr.net/npm/nsfwjs@2.4.2/dist/nsfwjs.min.js"></script>
+  <script>window.nsfwjs || document.write('<script src="nsfwjs.min.js"><\/script>')</script>
+</head>
+<body>
+<script>
+  // 'loading' until the model is in, then 'ready'; 'failed' if it could not load
+  window.moderationState = 'loading';
+  let model = null;
+  const frame = document.createElement('canvas');
+
+  nsfwjs.load().then(function (m) {
+    model = m;
+    window.moderationState = 'ready';
+  }).catch(function (err) {
+    window.moderationState = 'failed';
+    console.warn('CARE Garden: the photo moderation model could not be loaded.', err);
+  });
+
+  // Copies the current camera frame into this page's own canvas and
+  // classifies it. Resolves with nsfwjs predictions [{className, probability}].
+  window.classifyFrame = function (source, w, h) {
+    if (!model) return Promise.reject(new Error('moderation model not ready'));
+    frame.width = w;
+    frame.height = h;
+    frame.getContext('2d').drawImage(source, 0, 0, w, h);
+    return model.classify(frame);
+  };
+</script>
+</body>
+</html>

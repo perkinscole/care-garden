@@ -120,6 +120,7 @@ function updateWeatherSounds(isRaining) {
 // changes (or it has just finished loading). Leaving it alone in between
 // lets the M key mute the birds without being overruled the next frame.
 function setAmbientSound(slot, snd, want) {
+  want = want && !ambientMuted;        // the M key silences all three
   if (ambientSound[slot] === want) return;
   if (!soundReady(snd)) return;        // not loaded yet: try again next frame
   if (want) soundLoop(snd); else soundPause(snd);

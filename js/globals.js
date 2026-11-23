@@ -87,9 +87,12 @@ let windTarget = 0;
 let grassBlades = [];
 let sunGlow = 0;
 
-// NSFW content moderation model and readiness flag
-let nsfwModel = null;
-let nsfwReady = false;
+// Hidden frame that runs the photo moderation model (moderation.html)
+let moderationFrame = null;
+
+// Consecutive frames that threw; M-key mute for the ambient sound loops
+let drawFailures = 0;
+let ambientMuted = false;
 
 // Hat/decoration overlays drawn on detected faces
 let decorationsEnabled = true;

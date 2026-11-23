@@ -15,17 +15,32 @@
 
 // ── Face Detection ───────────────────────────────────
 
+// Only one detection loop may be alive. Every (re)start gets a new
+// generation number, and a callback from an older generation simply stops,
+// so a watchdog kick or an error retry replaces the loop instead of adding
+// a second one that would run alongside it for the rest of the day.
+let detectGeneration = 0;
+
+function startDetect() {
+  if (!faceapi) return;
+  const gen = ++detectGeneration;
+  try {
+    faceapi.detect(function(error, result) { gotFaces(error, result, gen); });
+  } catch (e) { console.log(e); }
+}
+
 // Initiates asynchronous face detection via the ml5 faceApi
 function faceReady() {
-  faceapi.detect(gotFaces);
+  startDetect();
 }
 
 // Callback that processes detection results, tracks smile frames per face, and re-triggers detection
-function gotFaces(error, result) {
+function gotFaces(error, result, gen) {
+  if (gen !== undefined && gen !== detectGeneration) return;   // an older loop: let it end
   if (error) {
     console.log(error);
     // Reschedule anyway with a small backoff so one bad frame doesn't kill detection forever.
-    setTimeout(() => { try { faceapi.detect(gotFaces); } catch (e) { console.log(e); } }, 500);
+    setTimeout(() => { if (gen === undefined || gen === detectGeneration) startDetect(); }, 500);
     return;
   }
 
@@ -85,7 +100,7 @@ function gotFaces(error, result) {
     }
   }
 
-  faceapi.detect(gotFaces);
+  startDetect();
 }
 
 // ── Face geometry ────────────────────────────────────

@@ -6,7 +6,7 @@ Interactive garden simulation for Robert Adams Middle School built with p5.js. S
 - **p5.js** — canvas, input, sound, the `setup()`/`draw()` loop
 - **PX** (`js/pixel.js`) — the project's own pixel-art renderer; ALL drawing goes through it (see `docs/PIXEL_ART.md`)
 - **ml5.js** — face detection with expression recognition
-- **nsfwjs** — content moderation on camera frames
+- **nsfwjs** — content moderation on camera frames; it runs in `moderation.html`, a hidden frame, because it cannot share a page with ml5 (clashing TensorFlow.js versions)
 - No build tools — plain HTML with `<script>` tags, run via local web server
 
 ## Running Locally
@@ -56,7 +56,8 @@ node tools/shot.js "http://localhost:8000/tools/sprites.html?zoom=8" sprites.png
 | `docs/PIXEL_ART.md` | The pixel-art contract: grid, API, house style, module contracts |
 | `tools/shot.js`, `tools/sprites.html` | Headless screenshots and a sprite sheet viewer |
 | `fonts/` | Bundled pixel fonts (Tiny5, Press Start 2P; SIL Open Font License) |
-| `server.py` | Static server plus `GET/POST /api/stats` |
+| `server.py` | Static server plus `GET/POST /api/stats` (listens on 127.0.0.1 only) |
+| `moderation.html` | Hidden frame that loads nsfwjs and classifies camera frames |
 
 ## Keyboard Controls
 - `M` — mute/unmute audio
@@ -86,7 +87,7 @@ node tools/shot.js "http://localhost:8000/tools/sprites.html?zoom=8" sprites.png
 1. ml5 faceApi detects faces and expressions every frame
 2. If a face smiles (>75% happy) for 5+ frames, a snap triggers
 3. Co-smiling faces nearby are bundled (up to 6 per group)
-4. nsfwjs checks the frame is safe
+4. The moderation frame checks the camera frame; the flower is planted only after it passes (if the model has not loaded, snaps are allowed through)
 5. Face images (square, at most 128px) are shown in the flower's center with `PX.photo`
 6. `careScore` increments, stats save to localStorage
 
