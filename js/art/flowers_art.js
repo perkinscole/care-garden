@@ -616,15 +616,32 @@ const FLOWER_ART = (() => {
   return {
     Grid, palette, HEADS,
 
+    // Petal length, in art pixels, of the head drawn round a face of
+    // radius r. Small faces get much shorter petals so that a settled
+    // flower is mostly portrait. `trim` takes a pixel or two more off
+    // (group plants use it so their blooms sit closer together).
+    petalLen(typeName, r, trim) {
+      const T = HEADS[typeName] || HEADS.daisy;
+      return Math.max(2, Math.round(T.L * (r - 1) / 7) - (trim || 0));
+    },
+
+    // How far a face head reaches from the middle of the face, outline
+    // included (a pixel or so more for the odd petal tip).
+    headReach(typeName, r, L) {
+      const T = HEADS[typeName] || HEADS.daisy;
+      return r + (T.rim || 1) + L + 1;
+    },
+
     // A flower head for a face of radius r (art pixels) or, with
     // face = false, a faceless flower `r/8` times its normal size.
+    // L overrides the petal length of a face head (see petalLen).
     // Returns { cv, ax, ay }: the canvas and the pixel at the middle of
     // the face.
-    head(typeName, r, face, ramp) {
+    head(typeName, r, face, ramp, L) {
       const T = HEADS[typeName] || HEADS.daisy;
-      const k = 0.5 + r / 16;
       const R = face ? r + (T.rim || 1) : Math.max(1, Math.round(T.c * r / 8));
-      const L = Math.max(2, Math.round((face ? T.L : T.Lf) * (face ? k : r / 8)));
+      if (!face) L = Math.max(2, Math.round(T.Lf * r / 8));
+      else if (!L) L = this.petalLen(typeName, r);
       const c = R + L + 4;
       const g = new Grid(c * 2 + 1, c * 2 + 1);
       T.paint(g, c, R, L, face);
@@ -661,21 +678,24 @@ const FLOWER_ART = (() => {
       return g.toArt(palette(ramp), (rows[0].length - 1) / 2, rows.length - 1);
     },
 
-    // The little flower a student carries: 7 pixels tall. (ax, ay) is the
-    // point just under the bottom of its stem.
+    // The little flower a student carries: four round petals, like a
+    // dogwood blossom (sunlit at the top left, shaded at the bottom right),
+    // round a yellow middle, on a stem with one leaf. (ax, ay) is the point just under the bottom of
+    // its stem.
     tiny(ramp) {
       const rows = [
-        '.ooo.',
-        'olhlo',
-        'ohymo',
-        'olmdo',
-        '.oeo.',
-        '..eG.',
-        '..e..',
+        '.oo.oo.',
+        'ohlolmo',
+        'ollymmo',
+        '.oywYo.',
+        'olmYmdo',
+        'ommoddo',
+        '.ooeoo.',
+        '...eG..',
       ];
-      const g = new Grid(5, 7);
+      const g = new Grid(7, rows.length);
       g.stamp(rows, 0, 0);
-      return g.toArt(palette(ramp), 2, 7);
+      return g.toArt(palette(ramp), 3, rows.length);
     },
   };
 })();
