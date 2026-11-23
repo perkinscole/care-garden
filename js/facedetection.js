@@ -2,11 +2,13 @@
 // File: facedetection.js
 // Author: Cole Perkins
 // Date Created: March 28, 2026 (refactored April 1, 2026)
-// Last Modified: April 12, 2026
+// Last Modified: November 22, 2026
 // Description: Face detection with smile recognition and head
-//   decorations. Tracks smile hold durations, renders countdown
-//   timers, and draws hats, crowns, horns, and other accessories
-//   on detected faces using smoothed positioning.
+//   decorations. Tracks smile hold durations, then draws everything
+//   that sits on top of the live video in pixel art: friendly corner
+//   brackets and a smile meter around each face, the countdown badge,
+//   and (during Hat Time) hats, crowns, horns and other accessories
+//   from js/art/hats_art.js, enlarged by whole numbers to fit each head.
 // ================================================================
 
 // ── Face Detection ───────────────────────────────────
@@ -53,7 +55,8 @@ function gotFaces(error, result) {
           inheritedDeco = faceSmileData[oldKey].decoration;
         }
       }
-      const deco = inheritedDeco >= 0 ? inheritedDeco : Math.floor(Math.random() * 5);
+      // A new face gets a random entry of FACE_DECORATIONS (see below)
+      const deco = inheritedDeco >= 0 ? inheritedDeco : Math.floor(Math.random() * FACE_DECORATIONS.length);
       faceSmileData[key] = { frames: 0, seen: true, snapped: false, decoration: deco, lastSeen: now };
     } else {
       faceSmileData[key].seen = true;
@@ -83,378 +86,296 @@ function gotFaces(error, result) {
   faceapi.detect(gotFaces);
 }
 
-// Draws colored bounding boxes around detected faces (green if smiling, blue otherwise)
+// ── Face geometry ────────────────────────────────────
+
+// Scratch rectangle reused every frame so nothing is allocated while drawing
+const _faceRect = { x: 0, y: 0, w: 0, h: 0 };
+
+// Converts a detection box (video pixels) into art pixels on the mirrored
+// video that sketch.js draws inside `videoArt`. The result is not rounded.
+function faceToArt(box, out) {
+  const sx = videoArt.w / videoW;
+  const sy = videoArt.h / videoH;
+  out.x = videoArt.x + videoArt.w - (box._x + box._width) * sx;   // mirrored
+  out.y = videoArt.y + box._y * sy;
+  out.w = box._width * sx;
+  out.h = box._height * sy;
+  return out;
+}
+
+// Rounds to a whole art pixel, but keeps the previous pixel while the value
+// has only wobbled a little. Detection is never perfectly steady, and
+// without this a hat or bracket flickers one pixel left and right.
+function stickyRound(prev, v) {
+  if (prev !== undefined && Math.abs(v - prev) <= 0.8) return prev;
+  return Math.round(v);
+}
+
+// True when the detection loop has stalled and the faces we hold are old
+function facesAreStale() {
+  return lastFaceUpdate > 0 && millis() - lastFaceUpdate > 2000;
+}
+
+// ── Face boxes ───────────────────────────────────────
+
+// Draws pixel corner brackets around each detected face and a small smile
+// meter under the chin. White = "we see you", yellow = smiling (the meter
+// fills while the smile is held), green = photo taken.
 function drawBoxes(detections) {
-  if (detections.length === 0 || !videoW || !videoH) return;
+  if (!detections || detections.length === 0 || !videoW || !videoH || !videoArt.w) return;
   // Don't draw boxes for stale detections (detection loop stalled)
-  if (lastFaceUpdate > 0 && millis() - lastFaceUpdate > 2000) return;
-
-  const destH       = height - splitY();
-  const videoAspect = videoW / videoH;
-  const screenAspect = width / destH;
-
-  let displayW, displayH;
-  if (videoAspect > screenAspect) {
-    displayW = width;
-    displayH = width / videoAspect;
-  } else {
-    displayH = destH;
-    displayW = destH * videoAspect;
-  }
-
-  const offsetX     = (width - displayW) / 2;
-  const offsetY     = (destH - displayH) / 2;
-  const scaleFactor = displayW / videoW;
+  if (facesAreStale()) return;
 
   for (let f = 0; f < detections.length; f++) {
-    let { _x, _y, _width, _height } = detections[f].alignedRect._box;
-    const x = (width - offsetX) - (_x + _width) * scaleFactor;
-    const y = splitY() + offsetY + (_y * scaleFactor);
-    const w = _width  * scaleFactor;
-    const h = _height * scaleFactor;
+    const det  = detections[f];
+    const r    = faceToArt(det.alignedRect._box, _faceRect);
+    const data = det._smileKey ? faceSmileData[det._smileKey] : null;
 
-    if (detections[f].expressions.happy > 0.75) {
-      stroke(120, 100, 50);
+    // Whole art pixels, remembered per face so the brackets hold still
+    let x, y, w, bh;
+    if (data) {
+      x  = data.boxX = stickyRound(data.boxX, r.x);
+      y  = data.boxY = stickyRound(data.boxY, r.y);
+      w  = data.boxW = stickyRound(data.boxW, r.w);
+      bh = data.boxH = stickyRound(data.boxH, r.h);
     } else {
-      stroke(220, 100, 50);
+      x = Math.round(r.x); y = Math.round(r.y); w = Math.round(r.w); bh = Math.round(r.h);
     }
-    strokeWeight(3);
-    noFill();
-    rect(x, y, w, h);
+
+    const smiling = det.expressions.happy > 0.75;
+    const snapped = !!(data && data.snapped);
+    const held    = data ? Math.min(data.frames, SMILE_HOLD_REQUIRED) : 0;
+
+    let col = PAL.white, icon = 'wait', filled = 0;
+    if (snapped)      { col = PAL.gr1; icon = 'done';  filled = SMILE_HOLD_REQUIRED; }
+    else if (smiling) { col = PAL.ye2; icon = 'smile'; filled = held; }
+
+    // The brackets breathe out by one pixel while a smile is charging up
+    const grow = (smiling && !snapped) ? PX.anim(2, 8) : 0;
+    drawFaceBrackets(x - grow, y - grow, w + grow * 2, bh + grow * 2, col);
+    drawSmileMeter(x + Math.floor(w / 2), Math.min(y + bh + 3, PX.SH - 8), w, icon, filled, snapped);
+  }
+}
+drawBoxes.pixel = true;
+
+// Four soft corner brackets around the rectangle (x, y, w, h)
+function drawFaceBrackets(x, y, w, h, col) {
+  const len = Math.max(4, Math.min(9, Math.round(w * 0.24)));
+  drawBracketCorner(x,         y,         1,  1, len, col);
+  drawBracketCorner(x + w - 1, y,        -1,  1, len, col);
+  drawBracketCorner(x,         y + h - 1, 1, -1, len, col);
+  drawBracketCorner(x + w - 1, y + h - 1, -1, -1, len, col);
+}
+
+// One L-shaped corner at (cx, cy) with arms reaching `len` pixels toward
+// (sx, sy). It is a 1px coloured line on an ink underlay, so it shows up
+// against anything the camera sees, and the corner pixel itself is left
+// out so the bracket looks rounded rather than like a camera viewfinder.
+function drawBracketCorner(cx, cy, sx, sy, len, col) {
+  const hx = sx > 0 ? cx + 1 : cx - len + 1;   // left end of the horizontal arm
+  const vy = sy > 0 ? cy + 1 : cy - len + 1;   // top end of the vertical arm
+  PX.rect(hx - 1, cy - 1, len + 1, 3, PAL.ink);
+  PX.rect(cx - 1, vy - 1, 3, len + 1, PAL.ink);
+  PX.rect(hx, cy, len - 1, 1, col);
+  PX.rect(cx, vy, 1, len - 1, col);
+}
+
+// Draw options for the three smile_icon frames, made once so the meter
+// does not create new objects every frame
+const SMILE_ICON_FRAMES = { wait: { frame: 'wait' }, smile: { frame: 'smile' }, done: { frame: 'done' } };
+const COUNTDOWN_TEXT = { font: 'small', align: 'center', color: PAL.white };
+
+// A little face icon and one pip per smile frame still needed, centred on
+// cx with its top at y. Small faces only get the icon.
+function drawSmileMeter(cx, y, faceW, icon, filled, snapped) {
+  const pips  = SMILE_HOLD_REQUIRED;
+  const barW  = pips * 3 + 1;
+  const showBar = faceW >= 16;
+  const total = showBar ? 7 + 1 + barW : 7;
+  const x0 = cx - Math.floor(total / 2);
+  PX.spr('smile_icon', x0, y, SMILE_ICON_FRAMES[icon]);
+  if (!showBar) return;
+  const bx = x0 + 8;
+  PX.rect(bx, y + 1, barW, 5, PAL.ink);
+  for (let i = 0; i < pips; i++) {
+    const on = i < filled;
+    PX.rect(bx + 1 + i * 3, y + 2, 2, 3, on ? (snapped ? PAL.gr1 : PAL.ye2) : PAL.g4);
+    if (on) PX.px(bx + 1 + i * 3, y + 2, snapped ? PAL.white : PAL.ye1);   // glint
   }
 }
 
-// Draws a circular countdown timer above each smiling face showing hold progress
-function drawCountdown() {
-  if (!videoW || !videoH || videoDisplayW === 0) return;
+// ── Smile countdown ──────────────────────────────────
 
-  const scaleFactor = videoDisplayW / videoW;
+// Cells of a pixel ring of radius 6, in clockwise order starting at the top.
+// Built once; drawCountdown lights them up one after another.
+const COUNTDOWN_RING = (() => {
+  const cells = [], seen = {};
+  for (let i = 0; i < 720; i++) {
+    const a = -Math.PI / 2 + (i / 720) * Math.PI * 2;
+    const x = Math.round(Math.cos(a) * 6), y = Math.round(Math.sin(a) * 6);
+    if (!seen[x + ',' + y]) { seen[x + ',' + y] = true; cells.push([x, y]); }
+  }
+  return cells;
+})();
+const COUNTDOWN_DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+
+// Draws a round badge beside each smiling face: a ring that fills as the
+// smile is held, with the number of frames still to go in the middle
+// (a tick once the smile has been held long enough).
+function drawCountdown() {
+  if (!videoW || !videoH || !videoArt.w) return;
+  if (facesAreStale()) return;
 
   for (let i = 0; i < detections.length; i++) {
     const key = detections[i]._smileKey;
     if (!key || !faceSmileData[key]) continue;
-    const frames = faceSmileData[key].frames;
-    if (frames <= 0 || faceSmileData[key].snapped) continue;
+    const data = faceSmileData[key];
+    const frames = data.frames;
+    if (frames <= 0 || data.snapped) continue;
 
     const progress    = min(frames / SMILE_HOLD_REQUIRED, 1.0);
     const secondsLeft = ceil((SMILE_HOLD_REQUIRED - frames));
-    const box         = detections[i].alignedRect._box;
 
-    const faceCX = (width - videoOffsetX) - (box._x + box._width / 2) * scaleFactor;
-    const faceTY = splitY() + videoOffsetY + box._y * scaleFactor;
-    const r = 14;
+    // Same whole-pixel box the brackets use, so the badge moves with them
+    const r = faceToArt(detections[i].alignedRect._box, _faceRect);
+    const x  = data.boxX !== undefined ? data.boxX : Math.round(r.x);
+    const y  = data.boxY !== undefined ? data.boxY : Math.round(r.y);
+    const w  = data.boxW !== undefined ? data.boxW : Math.round(r.w);
+    const bh = data.boxH !== undefined ? data.boxH : Math.round(r.h);
 
-    push();
-    noStroke(); fill(0, 0, 8, 180);
-    ellipse(faceCX, faceTY, r * 2 + 8, r * 2 + 8);
-    noFill(); stroke(55, 90, 65, 255); strokeWeight(3);
-    arc(faceCX, faceTY, r * 2, r * 2, -HALF_PI, -HALF_PI + TWO_PI * progress);
-    noStroke(); fill(0, 0, 96, 255);
-    textAlign(CENTER, CENTER); textSize(13); textStyle(BOLD);
-    text(frames >= SMILE_HOLD_REQUIRED ? '✓' : secondsLeft, faceCX, faceTY);
-    pop();
+    // Beside the cheek, clear of the hat; flips to the other side at the edge of the video
+    let bx = x + w + 9;
+    if (bx + 8 > videoArt.x + videoArt.w) bx = x - 10;
+    const by = y + Math.floor(bh / 2);
+
+    PX.circle(bx, by, 7, PAL.ink);
+    PX.circle(bx, by, 5, PAL.g5);
+    const lit = Math.round(progress * COUNTDOWN_RING.length);
+    for (let c = 0; c < COUNTDOWN_RING.length; c++) {
+      PX.px(bx + COUNTDOWN_RING[c][0], by + COUNTDOWN_RING[c][1], c < lit ? PAL.ye2 : PAL.g4);
+    }
+    if (frames >= SMILE_HOLD_REQUIRED) {
+      PX.spr('smile_tick', bx, by);
+    } else {
+      PX.text(COUNTDOWN_DIGITS[constrain(secondsLeft, 0, 9)], bx + 1, by - 4, COUNTDOWN_TEXT);
+    }
   }
 }
+drawCountdown.pixel = true;
 
 // ── Face Decorations ────────────────────────────────
 
-// Selects and renders a head decoration (hat, crown, horns, etc.) on each detected face
+// Every decoration a face can be given, by sprite name (js/art/hats_art.js).
+// faceSmileData[key].decoration is an index into this list; a face keeps
+// its decoration for as long as it is tracked.
+const FACE_DECORATIONS = [
+  'hat_explorer', 'hat_black', 'hat_sun', 'hat_cowboy', 'hat_straw',   // the five original hats
+  'hat_rain', 'hat_bucket',                                            // rainy-day extras
+  'deco_flowers', 'deco_ram', 'deco_party', 'deco_stars', 'deco_butterfly',
+];
+
+// Animated decorations: which frames to play and how many game frames each lasts
+const DECORATION_ANIM = {
+  deco_stars:     { seq: [0, 1, 0, 2], hold: 12 },
+  deco_butterfly: { seq: [0, 0, 0, 0, 0, 1, 2, 1, 0, 1, 2, 1], hold: 6 },
+};
+
+// The sizes a decoration can be drawn at. Each sprite exists in a large
+// version (made for a face 20 art pixels wide) and a small "_s" version
+// (for a face 14 wide), and either can be enlarged by a whole number, which
+// gives a ladder of sizes about 1.4x apart with every pixel still square.
+const DECORATION_SIZES = [
+  { small: true,  k: 1, face: 14 },
+  { small: false, k: 1, face: 20 },
+  { small: true,  k: 2, face: 28 },
+  { small: false, k: 2, face: 40 },
+  { small: false, k: 3, face: 60 },
+  { small: false, k: 4, face: 80 },
+  { small: false, k: 5, face: 100 },
+  { small: false, k: 6, face: 120 },
+];
+
+// How far above the top of the detection box (the eyebrows) a hat sits,
+// as a fraction of the face width. Sprite anchors rest on this line.
+const HAT_LINE = 0.36;
+
+// Picks the entry of DECORATION_SIZES that fits a face `fw` art pixels wide.
+// `prev` is the size used last frame: it is kept until the face has clearly
+// outgrown it, so a hat does not pop between two sizes.
+function pickDecorationSize(fw, prev) {
+  if (prev !== undefined && DECORATION_SIZES[prev]) {
+    const ratio = fw / DECORATION_SIZES[prev].face;
+    if (ratio > 0.78 && ratio < 1.28) return prev;
+  }
+  let best = 0, bestErr = Infinity;
+  for (let i = 0; i < DECORATION_SIZES.length; i++) {
+    const err = Math.abs(Math.log(fw / DECORATION_SIZES[i].face));
+    if (err < bestErr) { bestErr = err; best = i; }
+  }
+  return best;
+}
+
+// Draws each tracked face's hat or other head decoration over the video
 function drawFaceDecorations(detections) {
   if (!decorationsEnabled) return;
   if (!hatTimeActive) return;
-  if (!videoW || !videoH || videoDisplayW === 0) return;
+  if (!detections || !videoW || !videoH || !videoArt.w) return;
   // Don't draw hats on stale faces (detection loop stalled — avoids frozen hats on screen)
-  if (lastFaceUpdate > 0 && millis() - lastFaceUpdate > 2000) return;
-  const scaleFactor = videoDisplayW / videoW;
+  if (facesAreStale()) return;
 
   for (let i = 0; i < detections.length; i++) {
     const key = detections[i]._smileKey;
     if (!key || !faceSmileData[key]) continue;
+    const data = faceSmileData[key];
 
-    const box = detections[i].alignedRect._box;
-    const rawCx = (width - videoOffsetX) - (box._x + box._width / 2) * scaleFactor;
-    const rawTy = splitY() + videoOffsetY + box._y * scaleFactor;
-    const rawFw = box._width * scaleFactor;
+    const r = faceToArt(detections[i].alignedRect._box, _faceRect);
+    const rawCx = r.x + r.w / 2;
+    const rawTy = r.y;
+    const rawFw = r.w;
 
-    // Smooth positions to reduce jitter
+    // Smooth positions to reduce jitter. Start afresh if this entry has not
+    // been drawn for a while, otherwise the hat would slide in from wherever
+    // the face used to be.
     const smooth = 0.25;
-    if (!faceSmileData[key].smoothCx) {
-      faceSmileData[key].smoothCx = rawCx;
-      faceSmileData[key].smoothTy = rawTy;
-      faceSmileData[key].smoothFw = rawFw;
+    if (!data.smoothCx || frameCount - (data.smoothAt || 0) > 20) {
+      data.smoothCx = rawCx;
+      data.smoothTy = rawTy;
+      data.smoothFw = rawFw;
+      data.hatX = undefined;
+      data.hatY = undefined;
     }
-    faceSmileData[key].smoothCx += (rawCx - faceSmileData[key].smoothCx) * smooth;
-    faceSmileData[key].smoothTy += (rawTy - faceSmileData[key].smoothTy) * smooth;
-    faceSmileData[key].smoothFw += (rawFw - faceSmileData[key].smoothFw) * smooth;
-    const cx = faceSmileData[key].smoothCx;
-    const ty = faceSmileData[key].smoothTy;
-    const fw = faceSmileData[key].smoothFw;
+    data.smoothAt = frameCount;
+    data.smoothCx += (rawCx - data.smoothCx) * smooth;
+    data.smoothTy += (rawTy - data.smoothTy) * smooth;
+    data.smoothFw += (rawFw - data.smoothFw) * smooth;
+    const fw = data.smoothFw;
 
-    let deco = faceSmileData[key].decoration;
+    // Which sprite, and how many art pixels per sprite pixel
+    const name = FACE_DECORATIONS[data.decoration % FACE_DECORATIONS.length];
+    data.decoSize = pickDecorationSize(fw, data.decoSize);
+    const size = DECORATION_SIZES[data.decoSize];
+    const spr = PX.sprites[size.small ? name + '_s' : name];
+    if (!spr) continue;
+    const k = size.k;
 
-    // Force hat images during hat time (rain or random)
-    if (hatTimeActive && deco < 5 && hatImages.length > 0) {
-      deco = 5 + (faceSmileData[key].decoration % hatImages.length);
-    }
+    // Snap to whole art pixels only now, after smoothing
+    data.hatX = stickyRound(data.hatX, data.smoothCx);
+    data.hatY = stickyRound(data.hatY, data.smoothTy - fw * HAT_LINE);
 
-    const hatY = ty - fw * 0.25;  // shift all decorations up
-    const bigFw = fw * 1.15;     // scale decorations wider
-    if      (deco === 0) drawFlowerCrown(cx, hatY, bigFw);
-    else if (deco === 1) drawRamHorns(cx, hatY, bigFw);
-    else if (deco === 2) drawPartyHat(cx, hatY, bigFw);
-    else if (deco === 3) drawStarCrown(cx, hatY, bigFw);
-    else if (deco === 4) drawHeadButterfly(cx, hatY, bigFw);
-    else if (deco >= 5 && hatImages.length > 0) {
-      const hatIdx = (deco - 5) % hatImages.length;
-      const hatScale = hatIdx === 3 ? 2.4 : 1.9;
-      const isDark = hatIdx === 1;  // hat2 is dark, needs normal blend
-      drawHatImage(cx, hatY, bigFw, hatImages[hatIdx], hatScale, isDark);
-    }
+    let frame = 0;
+    const anim = DECORATION_ANIM[name];
+    if (anim) frame = anim.seq[Math.floor(PX.tick / anim.hold) % anim.seq.length];
+
+    // The sprite's anchor is the point that rests on the forehead
+    const dx = data.hatX - Math.round(spr.ax * k);
+    const dy = data.hatY - Math.round(spr.ay * k);
+    PX.c.drawImage(spr.frames[frame % spr.frames.length].cv, dx, dy, spr.w * k, spr.h * k);
   }
 }
+drawFaceDecorations.pixel = true;
 
-// Pre-processed hat images with backgrounds removed
-let cleanHatImages = [];
-let hatsProcessed = false;
-let hatProcessIdx = 0;
-
-// Processes one hat image per frame to avoid freezing (large images ~1MB each)
-function processHatImages() {
-  if (hatsProcessed || hatImages.length === 0) return;
-  // Check all images are loaded
-  for (let img of hatImages) {
-    if (!img || img.width === 0) return;
-  }
-  // Process one hat per frame
-  if (hatProcessIdx < hatImages.length) {
-    const idx = hatProcessIdx;
-    const src = hatImages[idx];
-    const g = createGraphics(src.width, src.height);
-    g.image(src, 0, 0);
-    g.loadPixels();
-    for (let i = 0; i < g.pixels.length; i += 4) {
-      const r = g.pixels[i], gv = g.pixels[i+1], b = g.pixels[i+2];
-      if (r < 30 && gv < 30 && b < 30) {
-        g.pixels[i+3] = 0;
-      } else if (gv > 80 && r < gv * 0.75 && b < gv * 0.75) {
-        g.pixels[i+3] = 0;
-      }
-    }
-    g.updatePixels();
-    cleanHatImages[idx] = g;
-    hatProcessIdx++;
-  }
-  if (hatProcessIdx >= hatImages.length) hatsProcessed = true;
-}
-
-// Draws a pre-processed hat image centered above a detected face
-function drawHatImage(cx, ty, fw, img, sc, isDark) {
-  if (!img) return;
-  processHatImages();
-  const idx = hatImages.indexOf(img);
-  const cleanImg = (idx >= 0 && cleanHatImages[idx]) ? cleanHatImages[idx] : img;
-  const hatW = fw * (sc || 1.6);
-  const hatH = hatW * (img.height / img.width);
-  push();
-  imageMode(CENTER);
-  image(cleanImg, cx, ty + hatH * 0.2, hatW, hatH);
-  pop();
-}
-
-// Draws a golden crown with jeweled points above a face
-function drawFlowerCrown(cx, ty, fw) {
-  const y = ty - fw * 0.05;
-  const crownW = fw * 0.85;
-  const crownH = fw * 0.45;
-  const bandTop = y;
-  const bandH = crownH * 0.35;
-  push();
-  noStroke();
-  // Crown points — drawn first so band covers their base
-  const points = 5;
-  for (let i = 0; i < points; i++) {
-    const px = cx - crownW / 2 + (i + 0.5) * (crownW / points);
-    fill(42, 80, 55, 230);
-    triangle(px - crownW / points * 0.4, bandTop,
-             px + crownW / points * 0.4, bandTop,
-             px, bandTop - crownH * 0.65);
-    // Jewel on each point
-    fill((i * 72) % 360, 80, 60, 240);
-    ellipse(px, bandTop - crownH * 0.45, fw * 0.04, fw * 0.04);
-  }
-  // Gold crown band — covers triangle bases
-  fill(42, 80, 55, 230);
-  rect(cx - crownW / 2, bandTop, crownW, bandH, 2);
-  // Bottom trim
-  fill(42, 70, 45, 200);
-  rect(cx - crownW / 2, bandTop + bandH, crownW, bandH * 0.2, 1);
-  // Band detail line
-  fill(42, 75, 48, 180);
-  rect(cx - crownW / 2, bandTop + bandH * 0.4, crownW, bandH * 0.15);
-  pop();
-}
-
-// Draws spiral ram horns on either side of a face with ridged detail
-function drawRamHorns(cx, ty, fw) {
-  const y = ty + fw * 0.1;
-  const r = fw * 0.35;
-  push();
-  noFill();
-  // Each horn spirals: starts at side of head, goes out and up, curls back around and down
-  for (let side = -1; side <= 1; side += 2) {
-    const hornCX = cx + side * fw * 0.55;
-    const hornCY = y;
-    for (let layer = 0; layer < 3; layer++) {
-      const thick = fw * (0.075 - layer * 0.018);
-      const shade = 48 + layer * 15;
-      stroke(32, 38, shade, 230 - layer * 50);
-      strokeWeight(thick);
-      beginShape();
-      // Spiral from bottom (~5 o'clock) up and around ~1.4 turns
-      const steps = 30;
-      const startA = side === -1 ? 0 : PI;
-      const totalArc = PI * 2.6;
-      for (let j = 0; j <= steps; j++) {
-        const prog = j / steps;
-        const a = startA + side * prog * totalArc;
-        const spiral = r * (1 - prog * 0.55) - layer * 1.5;
-        const px = hornCX + cos(a) * spiral;
-        const py = hornCY + sin(a) * spiral;
-        curveVertex(px, py);
-        if (j === 0 || j === steps) curveVertex(px, py);
-      }
-      endShape();
-    }
-    // Ridges across the horn
-    stroke(32, 25, 40, 100);
-    strokeWeight(0.8);
-    for (let rr = 1; rr <= 6; rr++) {
-      const prog = rr / 7;
-      const a = (side === -1 ? 0 : PI) + side * prog * PI * 2.6;
-      const spiral = r * (1 - prog * 0.55);
-      const px = hornCX + cos(a) * spiral;
-      const py = hornCY + sin(a) * spiral;
-      const perp = a + HALF_PI;
-      line(px + cos(perp) * 3, py + sin(perp) * 3,
-           px - cos(perp) * 3, py - sin(perp) * 3);
-    }
-  }
-  pop();
-}
-
-// Draws a flower wreath (vine band with colorful blossoms) around the head
-function drawPartyHat(cx, ty, fw) {
-  // Flower wreath hat — ring of flowers around the head
-  const y = ty + fw * 0.05;
-  const count = 9;
-  const wrW = fw * 0.9;
-  push();
-  noStroke();
-  // Vine band
-  stroke(120, 55, 32, 200);
-  strokeWeight(3.5);
-  noFill();
-  arc(cx, y, wrW, fw * 0.18, PI, TWO_PI);
-  noStroke();
-  // Leaves along the band
-  fill(115, 50, 35, 200);
-  for (let i = 0; i < count + 3; i++) {
-    const a = PI + (i / (count + 2)) * PI;
-    const lx = cx + cos(a) * wrW * 0.5;
-    const ly = y + sin(a) * fw * 0.09;
-    push();
-    translate(lx, ly);
-    rotate(a + HALF_PI);
-    ellipse(0, 0, fw * 0.05, fw * 0.08);
-    pop();
-  }
-  // Flowers
-  for (let i = 0; i < count; i++) {
-    const a = PI + ((i + 0.5) / count) * PI;
-    const fx = cx + cos(a) * wrW * 0.5;
-    const fy = y + sin(a) * fw * 0.09;
-    const hue = [340, 45, 280, 20, 200, 120, 340, 45, 280][i];
-    const sz = fw * 0.08;
-    // Petals
-    for (let p = 0; p < 5; p++) {
-      const pa = (p / 5) * TWO_PI;
-      fill(hue, 70, 68, 220);
-      ellipse(fx + cos(pa) * sz * 0.5, fy + sin(pa) * sz * 0.5, sz * 0.6, sz * 0.6);
-    }
-    // Center
-    fill(45, 85, 65, 240);
-    ellipse(fx, fy, sz * 0.45, sz * 0.45);
-  }
-  pop();
-}
-
-// Draws an arc of glowing stars above a face as a crown decoration
-function drawStarCrown(cx, ty, fw) {
-  const count = 7;
-  const arcW = fw * 0.8;
-  const arcH = fw * 0.35;
-  const y = ty - fw * 0.02;
-  push();
-  noStroke();
-  for (let i = 0; i < count; i++) {
-    const a = PI + (i / (count - 1)) * PI;
-    const sx = cx + cos(a) * arcW * 0.5;
-    const sy = y + sin(a) * arcH;
-    const sz = fw * (0.04 + (i % 2) * 0.02);
-    const hue = (45 + i * 15) % 360;
-    // Star glow
-    fill(hue, 80, 75, 120);
-    ellipse(sx, sy, sz * 3, sz * 3);
-    // Star body
-    fill(hue, 85, 80, 240);
-    drawStar5(sx, sy, sz);
-  }
-  pop();
-}
-
-// Draws a 5-pointed star shape at (x, y) with the given outer radius
-function drawStar5(x, y, r) {
-  beginShape();
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * TWO_PI - HALF_PI;
-    const rad = i % 2 === 0 ? r : r * 0.4;
-    vertex(x + cos(a) * rad, y + sin(a) * rad);
-  }
-  endShape(CLOSE);
-}
-
-// Draws a silver tiara with gem-topped arches and sparkle accents
-function drawHeadButterfly(cx, ty, fw) {
-  // Silver tiara/crown
-  const y = ty + fw * 0.05;
-  const crownW = fw * 0.75;
-  const crownH = fw * 0.3;
-  push();
-  noStroke();
-  // Silver band
-  fill(220, 8, 78, 230);
-  rect(cx - crownW / 2, y - crownH * 0.3, crownW, crownH * 0.4, 2);
-  // Tiara arches
-  const arches = 3;
-  for (let i = 0; i < arches; i++) {
-    const ax = cx - crownW * 0.3 + i * (crownW * 0.3);
-    const ah = crownH * (i === 1 ? 1.0 : 0.7);
-    fill(220, 10, 82, 220);
-    beginShape();
-    vertex(ax - crownW * 0.12, y - crownH * 0.3);
-    bezierVertex(ax - crownW * 0.08, y - ah, ax + crownW * 0.08, y - ah,
-                 ax + crownW * 0.12, y - crownH * 0.3);
-    endShape(CLOSE);
-    // Gem at top of each arch
-    const gemHue = [0, 220, 120][i];
-    fill(gemHue, 70, 60, 240);
-    ellipse(ax, y - ah * 0.75, fw * 0.03, fw * 0.03);
-  }
-  // Sparkle accents
-  fill(0, 0, 95, 200);
-  for (let i = 0; i < 4; i++) {
-    const sx = cx - crownW * 0.35 + i * (crownW * 0.25);
-    ellipse(sx, y - crownH * 0.15, fw * 0.015, fw * 0.015);
-  }
-  pop();
-}
+// The hats used to be five large PNG photos that had their backgrounds
+// stripped at startup. They are sprites now, so there is nothing to
+// process; sketch.js still checks these two until its hat loading is removed.
+let hatsProcessed = true;
+function processHatImages() {}
