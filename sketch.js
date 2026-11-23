@@ -141,18 +141,6 @@ function draw() {
     } catch (e) { /* ignore */ }
   }
 
-  // New school day: the kiosk often runs overnight, so start the day's
-  // count and milestones afresh when the date changes.
-  if (frameCount % 600 === 0) {
-    const todayKey = getTodayKey();
-    if (currentDayKey && todayKey !== currentDayKey) {
-      careScore = 0;
-      smileStats.today = 0;
-      lastMilestoneCelebrated = -1;
-    }
-    currentDayKey = todayKey;
-  }
-
   // Face-detection stall watchdog — if ml5 hasn't ticked in 5s, clear stale
   // detections (so hats/boxes stop drawing on ghost positions) and re-kick the loop.
   if (lastFaceUpdate > 0 && millis() - lastFaceUpdate > 5000) {
@@ -198,7 +186,6 @@ function draw() {
   PX.call(drawTown);
   if (typeof drawWeatherSky !== 'function') PX.call(drawWeather);
   PX.call(drawGround);
-  //drawHorizonLandmarks();
   PX.call(drawTrees);
   PX.call(drawGrass);
   PX.call(drawSchool);
@@ -581,18 +568,15 @@ function drawSkyBehind(pixelSky) {
 
 // Big announcements over the garden: group photos and rain hat time.
 function drawGardenLabels() {
-  if (groupSnapAlpha > 0) {
-    PX.alpha(groupSnapAlpha / 255, () => {
-      PX.text(groupSnapLabel, PX.W / 2, PX.H - 30,
-        { font: 'bold', scale: 2, align: 'center', color: PAL.ye2, outline: PAL.ink });
+  const banner = (label, alpha, y, color) => {
+    PX.alpha(alpha / 255, () => {
+      const w = PX.measure(label, 'bold') + 16;
+      PX.panel(PX.W / 2 - w / 2, y, w, 16, PAL.sk8, PAL.ink, 2);
+      PX.text(label, PX.W / 2, y + 4, { font: 'bold', align: 'center', color });
     });
-  }
-  if (hatTimeAlpha > 0) {
-    PX.alpha(hatTimeAlpha / 255, () => {
-      PX.text("It's raining, put on a hat!", PX.W / 2, PX.H - 56,
-        { font: 'bold', scale: 2, align: 'center', color: PAL.wa1, outline: PAL.ink });
-    });
-  }
+  };
+  if (groupSnapAlpha > 0) banner(groupSnapLabel, Math.min(255, groupSnapAlpha * 2), PX.H - 40, PAL.ye2);
+  if (hatTimeAlpha > 0) banner("It's raining, put on a hat!", Math.min(255, hatTimeAlpha * 2), PX.H - 20, PAL.wa1);
 }
 
 // ── Debug URL parameters ──────────────────────────────

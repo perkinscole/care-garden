@@ -38,7 +38,6 @@ let confettiParticles = [];
 // Per-face smile tracking and snap cooldown
 let faceSmileData = {};
 let lastSnapTime  = 0;
-let currentDayKey = '';   // today's date key, to notice when the day rolls over
 
 // Timestamp of the last successful face-detection callback (for stall watchdog)
 let lastFaceUpdate = 0;
