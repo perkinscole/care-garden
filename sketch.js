@@ -483,7 +483,7 @@ if (groundhog) {
   // Flower spawning — once per snap
   if (postSnapPause > 0) postSnapPause--;
   if (postSnapPause === 89) {
-    addFlower(random(0.05, 0.95), random(0.28, 1.0),
+    addFlower(random(0.05, 0.95), random(FLOWER_MIN_WY, 1.0),
               [random(360), random(55, 90), random(55, 72)]);
   }
 
@@ -589,6 +589,7 @@ function drawGardenLabels() {
 //   weather  sunny | cloudy | rainy | stormy | clearing
 //   speed    day-cycle multiplier, freeze=1 stops the clock
 //   flowers  plant this many demo flowers with stand-in faces
+//   settled  with flowers: show them at their settled garden size
 //   spawn    comma list: kids, rabbit, birds, groundhog, perkins, conant, principal,
 //            teachers, arrivals, departures, confetti, hats
 //   panel    show one side panel: gallery | ram | gardener | kids | school | ...
@@ -627,9 +628,15 @@ function applyDebugParams() {
     nextFlowerImgs = [];
     for (let k = 0; k < group; k++) nextFlowerImgs.push(makeDemoFace(i * 7 + k));
     if (group > 0 && i < MAX_GALLERY) smileGallery.push({ img: makeDemoFace(i * 7), alpha: 255 });
-    addFlower(random(0.05, 0.95), random(0.28, 1.0), [random(360), random(55, 90), random(55, 72)]);
+    addFlower(random(0.05, 0.95), random(FLOWER_MIN_WY, 1.0), [random(360), random(55, 90), random(55, 72)]);
   }
-  for (let f of flowers) { f.size = f.targetSize; f.dirtAlpha = 0; }
+  const settled = q.has('settled');
+  for (let f of flowers) {
+    f.targetSize = f.restSize;          // not boosted by the flowers planted after it
+    f.size = f.targetSize;
+    f.dirtAlpha = 0;
+    if (settled) f.age = 999;           // skip the first couple of minutes
+  }
   for (const what of (q.get('spawn') || '').split(',')) {
     if (what === 'kids')       for (let i = 0; i < 5; i++) kids.push(new Kid());
     if (what === 'rabbit')     { rabbits.push(new Rabbit()); rabbits.push(new Rabbit()); }

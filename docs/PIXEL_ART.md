@@ -179,10 +179,14 @@ top-right corner (art y 3–21).
   `cat`, `mrconant`, `principal`, `staff`. Keep each within about 60 wide and
   40 tall (the school may be 120×60); the card enlarges it.
 - **Tiny flower.** `drawTinyFlower(x, y, hsl)` draws a hand-held flower
-  about 7 pixels tall whose stem bottom is at `(x, y)`.
+  about 8 pixels tall and 7 wide whose stem bottom is at `(x, y)`.
 - **Flowers** keep their fields (`wx`, `wy`, `hsl`, `type`, `imgs`, `size`,
-  `targetSize`, `restSize`, `boost()`, `dispose()`): the ram, the gardener
-  and the students read them.
+  `targetSize`, `restSize`, `baseSize`, `age`, `boost()`, `dispose()`): the
+  ram, the gardener and the students read them. A fresh flower is large,
+  settles to a compact size after about 90 seconds, and boosts wear off, so
+  never assume a height. Ask the flower: `footPos()` and `headPos(i)` give
+  art-pixel positions as last drawn, `height()` its height, `blooms` how many
+  heads it has.
 - **Sounds.** Use `soundPlay`, `soundLoop`, `soundPause`, `soundStop` from
   `js/audio.js`; they are safe before a file has loaded.
 - **School.** The main entrance is two pairs of doors either side of

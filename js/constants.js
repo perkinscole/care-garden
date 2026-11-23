@@ -15,7 +15,8 @@ const MAX_GALLERY          = 6;
 const SMILE_HOLD_REQUIRED  = 5;
 const SNAP_COOLDOWN        = 1000;
 const PANEL_CYCLE_DURATION = 20000;
-const MAX_FLOWERS          = 1000;
+const MAX_FLOWERS          = 450;    // oldest flowers make way beyond this; more would only hide each other
+const FLOWER_MIN_WY        = 0.16;   // flowers are planted from just below the sidewalk to the front edge
 const MAX_GROUP_FACES      = 6;
 const FACE_CAPTURE_SIZE    = 128;   // captured face photos are stored at most this many pixels square
 
