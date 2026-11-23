@@ -384,9 +384,10 @@ if (groundhog) {
     } else {
       // No camera yet (or permission refused): say so instead of a blank hole
       PX.rect(videoArt.x, videoArt.y, videoArt.w, videoArt.h, PAL.g5);
-      PX.text('Waiting for the camera...', videoArt.x + videoArt.w / 2, videoArt.y + videoArt.h / 2 - 8,
-        { align: 'center', color: PAL.g1, maxW: videoArt.w - 12 });
-      PX.text('Allow camera access to grow flowers', videoArt.x + videoArt.w / 2, videoArt.y + videoArt.h / 2 + 6,
+      const big = videoArt.w >= 120 ? 2 : 1;
+      const used = PX.text('Waiting for the camera...', videoArt.x + videoArt.w / 2, videoArt.y + videoArt.h / 2 - 14 * big,
+        { align: 'center', color: PAL.g1, maxW: videoArt.w - 12, scale: big });
+      PX.text('Allow camera access to grow flowers', videoArt.x + videoArt.w / 2, videoArt.y + videoArt.h / 2 - 14 * big + used + 6,
         { align: 'center', color: PAL.g3, maxW: videoArt.w - 12 });
     }
     PX.end();
@@ -591,6 +592,7 @@ function drawGardenLabels() {
 //   spawn    comma list: kids, rabbit, birds, groundhog, perkins, conant, principal,
 //            teachers, arrivals, departures, confetti, hats
 //   panel    show one side panel: gallery | ram | gardener | kids | school | ...
+//   page     hold an I SPY card on page N of its text
 //   score    set today's CARE score
 //   seed     fixed random seed for repeatable layouts
 const DEBUG = { seed: null, active: false };
