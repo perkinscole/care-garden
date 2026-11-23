@@ -376,40 +376,40 @@ function drawFairClouds(na) {
 
 // ── Lawn ──────────────────────────────────────────────
 
-// Draws the lawn from the horizon to the front edge: mown in stripes that
-// get taller toward the viewer, lighter in the distance, darker up close.
-// Daylight colours only; sketch.js tints the garden for the time of day.
+// Builds the ground once: the lawn is a slab of grass blocks one block
+// thick (its dirt side shows along the front edge), mown in a checkerboard
+// of two greens so the block grid reads from across the room, with plain
+// grass running out to the sides and back under the school and the town.
+let _groundBuilt = false;
 function drawGround() {
-  const w = PX.W, h = PX.H - PX.HOR;
-  const cv = sceneLayer('lawn', w, h, '', g => {
-    // Shade of green for a tone value: below 0 is sunnier, above 0 is deeper
-    const tone = v => sceneRgb(v < 0 ? PX.mix(PAL.gr3, PAL.gr2, Math.min(1, -v)) : PX.mix(PAL.gr3, PAL.gr4, Math.min(1, v)));
-    const BANDS = 9;
-    // Mowing stripes: band edges bunch up toward the horizon
-    const bandOf = y => Math.min(BANDS - 1, Math.floor(BANDS * Math.pow(y / h, 0.62)));
-    const bandTone = k => -0.34 + 0.62 * (k / (BANDS - 1)) + (k % 2 === 0 ? -0.1 : 0.1);
-    const img = g.createImageData(w, h);
-    for (let y = 0; y < h; y++) {
-      const k = bandOf(y);
-      const here = tone(bandTone(k));
-      // The row where two stripes meet is a checkerboard of both
-      const next = (y + 1 < h && bandOf(y + 1) !== k) ? tone(bandTone(k + 1)) : here;
-      const fleckDark = tone(bandTone(k) + 0.42), fleckLight = tone(bandTone(k) - 0.4);
-      for (let x = 0; x < w; x++) {
-        let c = ((x + y) & 1) === 0 ? here : next;
-        // Scattered flecks: short dark blades and the odd sunlit one
-        const r = sceneHash(x, y), up = y > 0 ? sceneHash(x, y - 1) : 0.5;
-        if (r < 0.007 || up < 0.007) c = fleckDark;
-        else if (r > 0.995) c = fleckLight;
-        const o = (y * w + x) * 4;
-        img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
-      }
-    }
-    g.putImageData(img, 0, 0);
+  if (_groundBuilt) return;
+  _groundBuilt = true;
+  const lawnTex = G3.pixelTex('lawn_checker', 32, 32, g => {
+    const a = G3.blockTex('grass').image, b = G3.blockTex('grass_light').image;
+    g.drawImage(a, 0, 0); g.drawImage(b, 16, 0); g.drawImage(b, 0, 16); g.drawImage(a, 16, 16);
   });
-  PX.c.drawImage(cv, 0, PX.HOR);
+  const W = G3.GW, D = G3.GD;
+  // The lawn top: one quad whose texture repeats every two blocks
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(W + 2, D + 1), G3.texMat(lawnTex));
+  top.geometry.attributes.uv.array.forEach((v, i, arr) => { arr[i] = v * (i % 2 === 0 ? (W + 2) / 2 : (D + 1) / 2); });
+  top.rotation.x = -Math.PI / 2;
+  top.position.set(0, 0, (D + 1) / 2);
+  top.receiveShadow = true;
+  G3.scene.add(top);
+  // Its front face: grass over dirt, then dirt and stone going down
+  G3.scene.add(G3.blockBox(W + 2, 1, 0.5, 'grass_side', 0, -0.5, D + 1.25));
+  G3.scene.add(G3.blockBox(W + 2, 3, 0.5, 'dirt', 0, -2.5, D + 1.25));
+  // Rougher grass off to both sides and far back behind the school
+  const side = (x0, x1, z0, z1) => {
+    const m = G3.blockBox(x1 - x0, 1, z1 - z0, { top: 'grass', side: 'grass_side' }, (x0 + x1) / 2, -0.5, (z0 + z1) / 2);
+    m.castShadow = false;
+    G3.scene.add(m);
+  };
+  side(-70, -(W + 2) / 2, -60, D + 1.5);
+  side((W + 2) / 2, 70, -60, D + 1.5);
+  side(-(W + 2) / 2, (W + 2) / 2, -60, 0);
 }
-drawGround.pixel = true;
+drawGround.g3 = true;
 
 // Paints one grass tuft with its root at (x, y): three little blades whose
 // tips lean left (-1), stand straight (0) or lean right (+1).

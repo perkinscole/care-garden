@@ -5,7 +5,7 @@
 // Last Modified: November 22, 2026
 // Description: UI systems for the CARE Garden, drawn as pixel art on the
 //   PX grid: smile stats persistence, the CARE score dashboard panel,
-//   the smile gallery of polaroids, the "I SPY" character cards,
+//   the smile gallery of framed photos, the "I SPY" character cards,
 //   speech bubbles, and confetti celebrations with a milestone banner.
 //   The sprites used here are defined in js/art/ui_art.js.
 // ================================================================
@@ -321,52 +321,72 @@ function uiClip(x, y, w, h, fn) {
   try { fn(); } finally { c.restore(); }
 }
 
-// Wooden picture-frame panel, the look shared by both dashboard panels.
-// The moulding is lit from the top left. Returns the rectangle inside it.
+// Block-built panel, the look shared by the dashboard panels: a frame of
+// wooden plank blocks (seams and bevels showing, a paler end block at each
+// corner) around a flat dark area for the content. The frame is painted
+// once per size and stamped afterwards. Returns the rectangle inside it.
+const UI_FRAME = 6;                                      // frame thickness; planks are twice as long
+const UI_WOOD     = { l: PAL.wo1, m: PAL.wo2, d: PAL.wo3 };
+const UI_WOOD_END = { l: PAL.ta1, m: PAL.ta3, d: PAL.ta4 };
 function drawHudFrame(x, y, w, h, fill) {
-  PX.rect(x, y, w, h, PAL.ink);
-  if (w < 24 || h < 24) {                 // too small for a moulding: plain box
-    PX.rect(x + 1, y + 1, w - 2, h - 2, fill);
-    return { x: x + 1, y: y + 1, w: w - 2, h: h - 2 };
+  const T = UI_FRAME;
+  if (w < 40 || h < 40) {                 // too small for blocks: a plain bevelled slab
+    PX.block(x, y, w, h, UI_WOOD);
+    PX.rect(x + 2, y + 2, w - 4, h - 4, fill);
+    return { x: x + 2, y: y + 2, w: w - 4, h: h - 4 };
   }
-  PX.rect(x + 1, y + 1, w - 2, h - 2, PAL.wo2);
-  PX.rect(x + 1, y + 1, w - 2, 1, PAL.wo1);            // outer edge: lit top and left
-  PX.rect(x + 1, y + 1, 1, h - 2, PAL.wo1);
-  PX.rect(x + 1, y + h - 2, w - 2, 1, PAL.wo4);        // shaded bottom and right
-  PX.rect(x + w - 2, y + 1, 1, h - 2, PAL.wo4);
-  PX.rect(x + 3, y + 3, w - 6, h - 6, PAL.wo1);        // inner edge: the bevel reversed
-  PX.rect(x + 3, y + 3, w - 6, 1, PAL.wo3);
-  PX.rect(x + 3, y + 3, 1, h - 6, PAL.wo3);
-  PX.rect(x + 4, y + 4, w - 8, h - 8, PAL.ink);
-  PX.rect(x + 5, y + 5, w - 10, h - 10, fill);
-  return { x: x + 5, y: y + 5, w: w - 10, h: h - 10 };
+  PX.rect(x + T, y + T, w - 2 * T, h - 2 * T, fill);
+  PX.cached('hud|' + w + '|' + h, x, y, w, h, () => {
+    const o = { flecks: [PAL.wo1, PAL.wo3], amount: 0.16, seed: 3 };
+    PX.blocks(T, 0, w - 2 * T, T, UI_WOOD, 2 * T, o);              // top and bottom rails: planks
+    PX.blocks(T, h - T, w - 2 * T, T, UI_WOOD, 2 * T, o);
+    for (let j = T; j < h - T; j += 2 * T) {                       // side posts
+      const bh = Math.min(2 * T, h - T - j);
+      o.seed = 11 + j;
+      PX.block(0, j, T, bh, UI_WOOD, o);
+      o.seed = 29 + j;
+      PX.block(w - T, j, T, bh, UI_WOOD, o);
+    }
+    for (const [cx, cy] of [[0, 0], [w - T, 0], [0, h - T], [w - T, h - T]]) {   // corner end blocks
+      PX.block(cx, cy, T, T, UI_WOOD_END);
+      PX.rect(cx + 2, cy + 2, T - 4, T - 4, PAL.ta4);
+    }
+  });
+  // The content sits a step lower than the frame: shade along its top and left
+  PX.rect(x + T, y + T, w - 2 * T, 1, PAL.black);
+  PX.rect(x + T, y + T, 1, h - 2 * T, PAL.black);
+  return { x: x + T, y: y + T, w: w - 2 * T, h: h - 2 * T };
 }
 
-// One vine creeping along a frame edge from (x0, y0). `dir` is the way it
-// grows (+1 / -1) and `inward` the side its leaves hang on.
-const UI_VINE_WAVE = [0, 0, 1, 1, 1, 0, 0, -1, -1, -1];
+// One block vine creeping along a frame rail from (x0, y0): a run of 2x2
+// chunks that steps up and down at right angles, with square leaves on
+// alternate sides. `dir` is the way it grows (+1 / -1) and `inward` the
+// side the panel's content is on.
+const UI_VINE_STEP = [0, 0, 0, 0, 2, 2, 2, 0, 0, 0, -2, -2];
 function drawVine(x0, y0, len, horizontal, dir, inward) {
-  let vx = x0, vy = y0;
-  for (let i = 0; i < len; i++) {
-    const wv = UI_VINE_WAVE[i % UI_VINE_WAVE.length];
-    vx = horizontal ? x0 + i * dir : x0 + wv;
-    vy = horizontal ? y0 + wv : y0 + i * dir;
-    PX.px(vx, vy, i % 5 === 4 ? PAL.gr4 : PAL.gr3);
-    if (i % 7 === 4 && i < len - 3) {
-      if (horizontal) {
-        if (inward > 0) PX.spr('ui_leaf', vx - 1, vy + 1, { frame: 'down' });
-        else            PX.spr('ui_leaf', vx - 1, vy - 3, { frame: 'up' });
-      } else {
-        if (inward > 0) PX.spr('ui_leaf', vx + 1, vy - 1, { frame: 'out' });
-        else            PX.spr('ui_leaf', vx, vy - 1, { frame: 'out', flip: true });
-      }
+  let cx = x0, cy = y0, prev = 0;
+  for (let i = 0; i < len; i += 2) {
+    const k = i >> 1, off = UI_VINE_STEP[k % UI_VINE_STEP.length];
+    cx = horizontal ? x0 + i * dir : x0 + off;
+    cy = horizontal ? y0 + off : y0 + i * dir;
+    const col = k % 3 === 2 ? PAL.gr4 : PAL.gr3;
+    PX.rect(cx, cy, 2, 2, col);
+    if (off !== prev) {                    // square off the step
+      if (horizontal) PX.rect(cx, y0 + prev, 2, 2, col); else PX.rect(x0 + prev, cy, 2, 2, col);
+    }
+    prev = off;
+    if (k % 6 === 3 && i < len - 6) {
+      const side = (k % 12 === 3) ? inward : -inward;
+      if (horizontal) PX.spr('ui_leaf', cx - 1, side > 0 ? cy + 2 : cy - 4);
+      else            PX.spr('ui_leaf', side > 0 ? cx + 2 : cx - 4, cy - 1);
     }
   }
-  PX.px(vx, vy, PAL.gr2);                 // a fresh green tip
+  PX.rect(cx, cy, 2, 2, PAL.gr1);          // a fresh green tip
 }
 
-// Vines and flowers growing over the corners of a framed panel. `corners` is
-// a set of bits: 1 top left, 2 top right, 4 bottom right, 8 bottom left.
+// Vines and block flowers growing over the corners of a framed panel.
+// `corners` is a set of bits: 1 top left, 2 top right, 4 bottom right,
+// 8 bottom left. Painted once per panel size and colours.
 const UI_FLOWER_PINK   = { p: PAL.pi2, s: PAL.pi3 };
 const UI_FLOWER_YELLOW = { p: PAL.ye1, s: PAL.ye3, y: PAL.or2, c: PAL.or3 };
 const UI_FLOWER_BLUE   = { p: PAL.bl1, s: PAL.bl2 };
@@ -375,32 +395,37 @@ const UI_FLOWER_PURPLE = { p: PAL.pu1, s: PAL.pu2 };
 const UI_FLOWER_RED    = { p: PAL.re1, s: PAL.re2 };
 function drawFrameVines(x, y, w, h, palA, palB, corners) {
   if (w < 60 || h < 60) return;
-  const lenH = Math.min(30, Math.floor(w / 5)), lenV = Math.min(20, Math.floor(h / 5));
-  const far = Math.floor(lenH * 0.6);
-  if (corners & 1) {                       // top left
-    drawVine(x + 3, y + 2, lenH, true, 1, 1);
-    drawVine(x + 2, y + 3, lenV, false, 1, 1);
-    PX.spr('ui_flower', x + 4, y + 4, { pal: palA });
-    PX.spr('ui_bud', x + 3 + far, y + 2, { pal: palB });
-  }
-  if (corners & 2) {                       // top right
-    drawVine(x + w - 4, y + 2, lenH, true, -1, 1);
-    drawVine(x + w - 3, y + 3, lenV, false, 1, -1);
-    PX.spr('ui_flower', x + w - 5, y + 4, { pal: palA });
-    PX.spr('ui_bud', x + w - 4 - far, y + 2, { pal: palB });
-  }
-  if (corners & 4) {                       // bottom right
-    drawVine(x + w - 4, y + h - 3, lenH, true, -1, -1);
-    drawVine(x + w - 3, y + h - 4, lenV, false, -1, -1);
-    PX.spr('ui_flower', x + w - 5, y + h - 5, { pal: palB });
-    PX.spr('ui_bud', x + w - 4 - far, y + h - 3, { pal: palA });
-  }
-  if (corners & 8) {                       // bottom left
-    drawVine(x + 3, y + h - 3, lenH, true, 1, -1);
-    drawVine(x + 2, y + h - 4, lenV, false, -1, 1);
-    PX.spr('ui_flower', x + 4, y + h - 5, { pal: palB });
-    PX.spr('ui_bud', x + 3 + far, y + h - 3, { pal: palA });
-  }
+  PX.cached('vines|' + w + '|' + h + '|' + corners + palA.p + palB.p, x, y, w, h, () => {
+    const T = UI_FRAME, m = T / 2 - 1;        // m: where a vine runs along the middle of a rail
+    const lenH = Math.min(44, Math.floor(w / 10) * 2), lenV = Math.min(26, Math.floor(h / 10) * 2);
+    const far = Math.floor(lenH * 0.3) * 2;
+    const R = w - m - 2, B = h - m - 2;       // the same for the right and bottom rails
+    const budA = { p: palA.p, y: PAL.ye2 }, budB = { p: palB.p, y: PAL.ye2 };
+    if (corners & 1) {                       // top left
+      drawVine(T, m, lenH, true, 1, 1);
+      drawVine(m, T, lenV, false, 1, 1);
+      PX.spr('ui_flower', m + 1, m + 1, { pal: palA });
+      PX.spr('ui_bud', T + 1 + far, m + 1, { pal: budB });
+    }
+    if (corners & 2) {                       // top right
+      drawVine(w - T - 2, m, lenH, true, -1, 1);
+      drawVine(R, T, lenV, false, 1, -1);
+      PX.spr('ui_flower', R, m + 1, { pal: palA });
+      PX.spr('ui_bud', w - T - 2 - far, m + 1, { pal: budB });
+    }
+    if (corners & 4) {                       // bottom right
+      drawVine(w - T - 2, B, lenH, true, -1, -1);
+      drawVine(R, h - T - 2, lenV, false, -1, -1);
+      PX.spr('ui_flower', R, B, { pal: palB });
+      PX.spr('ui_bud', w - T - 2 - far, B + 1, { pal: budA });
+    }
+    if (corners & 8) {                       // bottom left
+      drawVine(T, B, lenH, true, 1, -1);
+      drawVine(m, h - T - 2, lenV, false, -1, 1);
+      PX.spr('ui_flower', m + 1, B, { pal: palB });
+      PX.spr('ui_bud', T + 1 + far, B + 1, { pal: budA });
+    }
+  });
 }
 
 // Panel heading with a little flower either side and a dotted rule under it.
@@ -432,6 +457,7 @@ function drawDottedRule(x, y, w, col) {
 const BUBBLE_WRAP_W = 110;   // text wraps at this many art pixels
 const BUBBLE_LINE_H = 7;
 const BUBBLE_TAIL   = 3;     // rows of tail below (or above) the bubble
+const BUBBLE_EDGE   = PAL.g5;   // the bubble's dark edge (slate, not black)
 // The corner kept clear for the forecast panel: 82x49 with a 4px margin, plus a gap
 const FORECAST_KEEP_W = 89, FORECAST_KEEP_H = 55;
 
@@ -484,9 +510,10 @@ class SpeechBubble {
     this.cvKey = '';
   }
 
-  // Paints the bubble into its own small canvas: white panel, ink border and
-  // a stepped tail whose tip is `tailX` pixels from the left edge. It is
-  // only repainted when the tail has to move or flip.
+  // Paints the bubble into its own small canvas: a square-cornered white
+  // slab with a dark edge, a shaded bottom and right side, and a stepped
+  // tail whose tip is `tailX` pixels from the left edge. It is only
+  // repainted when the tail has to move or flip.
   paint(tailX, below) {
     const key = tailX + (below ? 'b' : 'a');
     if (key === this.cvKey) return;
@@ -497,21 +524,23 @@ class SpeechBubble {
     this.cv.height = H + T;
     const top = below ? T : 0;
     PX.withTarget(this.cv.getContext('2d'), () => {
-      PX.panel(0, top, W, H, PAL.white, PAL.ink, 2);
-      PX.rect(2, top + H - 2, W - 4, 1, PAL.g1);          // soft shade along the bottom
+      PX.rect(0, top, W, H, BUBBLE_EDGE);
+      PX.rect(1, top + 1, W - 2, H - 2, PAL.white);
+      PX.rect(1, top + H - 2, W - 2, 1, PAL.g1);          // shade along the bottom and right
+      PX.rect(W - 2, top + 1, 1, H - 2, PAL.g1);
       for (let i = 0; i < this.lines.length; i++) {
         uiText(this.lines[i], Math.floor(W / 2), top + 3 + i * BUBBLE_LINE_H,
           { color: PAL.ink, align: 'center' });
       }
-      // The tail: opens through the border and narrows to a one-pixel tip
+      // The tail: a four-wide block stepping down to a two-wide one.
+      // `row(k, hh)` is the y of a piece k rows out from the bubble's edge.
       const edge = below ? top : top + H - 1;
-      const step = below ? -1 : 1;
-      PX.rect(tailX - 2, edge, 5, 1, PAL.white);
-      PX.rect(tailX - 2, edge + step, 5, 1, PAL.ink);
-      PX.rect(tailX - 1, edge + step, 3, 1, PAL.white);
-      PX.rect(tailX - 1, edge + step * 2, 3, 1, PAL.ink);
-      PX.px(tailX, edge + step * 2, PAL.white);
-      PX.px(tailX, edge + step * 3, PAL.ink);
+      const row = (k, hh) => below ? edge - k - hh + 1 : edge + k;
+      PX.rect(tailX - 3, row(1, 1), 6, 1, BUBBLE_EDGE);
+      PX.rect(tailX - 3, row(2, 1), 6, 1, BUBBLE_EDGE);
+      PX.rect(tailX - 2, row(3, 1), 4, 1, BUBBLE_EDGE);
+      PX.rect(tailX - 2, row(0, 2), 4, 2, PAL.white);
+      PX.rect(tailX - 1, row(2, 1), 2, 1, PAL.white);
     });
   }
 
@@ -610,7 +639,7 @@ const GALLERY_GRIDS = [[3, 2], [6, 1], [2, 3], [1, 6], [5, 1], [1, 5], [2, 2], [
 const GALLERY_TITLES = [['SMILE ARCHIVE', 'bold'], ['SMILES', 'bold'], ['SMILE ARCHIVE', 'small'], ['SMILES', 'small']];
 // The little flower drawn on the white strip of each polaroid
 const GALLERY_MARKS = [UI_FLOWER_PINK, UI_FLOWER_BLUE, UI_FLOWER_YELLOW, UI_FLOWER_PURPLE, UI_FLOWER_RED, UI_FLOWER_BLUE];
-const GALLERY_EMPTY_PAL = { o: PAL.sk7, p: UI_BG, s: UI_BG, y: PAL.sk7, c: PAL.sk7 };
+const GALLERY_EMPTY_PAL = { p: PAL.sk6, s: PAL.sk6, y: UI_BG, c: UI_BG };
 const galleryPick = { cols: 1, rows: 1, p: 0 };   // result of pickGalleryGrid(), reused every frame
 
 // A small polaroid is its photo (p pixels square) plus a 3px border and a
@@ -682,7 +711,11 @@ function drawGalleryGrid(x, y, w, h, g, gx, first) {
       drawPolaroid(px, py, p, smileGallery[n], GALLERY_MARKS[n % GALLERY_MARKS.length], 6, '');
     } else if (n < MAX_GALLERY) {
       // An empty place waiting for the next smile
-      PX.box(px, py, fw, fh, PAL.sk7);
+      PX.rect(px, py, fw, fh, PAL.sk7);                    // a recess: dark top and left, lit bottom and right
+      PX.rect(px, py, fw, 1, PAL.black);
+      PX.rect(px, py, 1, fh, PAL.black);
+      PX.rect(px, py + fh - 1, fw, 1, UI_RULE);
+      PX.rect(px + fw - 1, py, 1, fh, UI_RULE);
       PX.spr('ui_flower', px + Math.floor(fw / 2), py + Math.floor(fh / 2), { pal: GALLERY_EMPTY_PAL });
     } else if (fh >= 18) {
       // A spare corner of the grid: something growing in it
@@ -692,20 +725,20 @@ function drawGalleryGrid(x, y, w, h, g, gx, first) {
   }
 }
 
-// One smile photo in a white polaroid frame held up by a strip of tape.
-// The photo itself is drawn smooth at full screen resolution. `lip` is the
-// height of the white strip under the photo, which can carry a caption.
+// One smile photo in a square bevelled frame of pale blocks, hung from a
+// little peg. The photo itself is the real picture, drawn smooth at full
+// screen resolution and never altered; only its frame is block art. `lip`
+// is the height of the strip under the photo, which can carry a caption.
 function drawPolaroid(x, y, p, photo, markPal, lip, caption) {
   const fw = p + 6, fh = p + 4 + lip;
   PX.alpha(constrain(photo.alpha / 255, 0, 1), () => {
-    PX.rect(x + fw, y + 2, 1, fh - 1, PAL.black);          // drop shadow, right and below
-    PX.rect(x + 2, y + fh, fw - 2, 1, PAL.black);
-    PX.box(x, y, fw, fh, PAL.ink);
-    PX.rect(x + 1, y + 1, fw - 2, 2, PAL.white);           // the white card, around the photo
-    PX.rect(x + 1, y + 3, 2, p, PAL.white);
-    PX.rect(x + fw - 3, y + 3, 2, p, PAL.white);
-    PX.rect(x + 1, y + 3 + p, fw - 2, lip - 1, PAL.white);
-    PX.rect(x + 1, y + fh - 2, fw - 2, 1, PAL.g1);
+    PX.rect(x + 2, y + 2, fw, fh, PAL.black);              // block shadow, right and below
+    PX.rect(x, y, fw, fh, PAL.cream);                      // the frame block
+    PX.rect(x, y, fw, 1, PAL.white);                       // lit top and left
+    PX.rect(x, y, 1, fh, PAL.white);
+    PX.rect(x, y + fh - 1, fw, 1, PAL.ta2);                // shaded bottom and right
+    PX.rect(x + fw - 1, y, 1, fh, PAL.ta2);
+    PX.rect(x + 2, y + 2, p + 2, p + 2, PAL.g5);           // dark one-pixel frame round the photo
 
     const img = photo.img;
     const src = img && (img.elt || img.canvas || img);
@@ -719,8 +752,8 @@ function drawPolaroid(x, y, p, photo, markPal, lip, caption) {
       PX.rect(x + 3, y + 3, p, p, PAL.g2);
     }
     const cx = x + Math.floor(fw / 2);
-    if (caption) uiText(caption, cx, y + 3 + p + Math.floor((lip - 6) / 2), { color: PAL.g4, align: 'center' });
-    else if (p >= 12) PX.spr('ui_bud', cx, y + p + 5, { pal: { p: markPal.s, y: PAL.ye2 } });
+    if (caption) uiText(caption, cx, y + 3 + p + Math.floor((lip - 4) / 2), { color: PAL.g4, align: 'center' });
+    else if (p >= 12) PX.spr('ui_bud', cx, y + p + 6, { pal: { p: markPal.s, y: PAL.ye2 } });
     PX.spr('ui_tape', cx, y);
   });
 }
@@ -814,8 +847,8 @@ function measureCardArt(id) {
 function drawCardPlaceholder(x, y, tick) {
   const bob = Math.floor(tick / 24) % 2;
   PX.shadow(x, y, 16 - bob * 2);
-  PX.panel(x - 8, y - 22 - bob, 17, 20, PAL.cream, PAL.ink, 2);
-  PX.rect(x - 6, y - 5 - bob, 13, 1, PAL.ta2);
+  PX.block(x - 8, y - 22 - bob, 17, 20, { l: PAL.white, m: PAL.cream, d: PAL.ta2 });
+  PX.rect(x - 8, y - 22 - bob, 17, 3, PAL.white);         // top face
   uiText('?', x + 1, y - 19 - bob, { font: 'bold', scale: 2, color: PAL.pu3, align: 'center' });
 }
 
@@ -1060,33 +1093,40 @@ function layoutCard(I, card, box) {
   return L;
 }
 
-// A little outdoor scene for the character to stand in: sky, a cloud, a
-// far hill and a strip of lawn. `gy` is the top of the grass.
+// A little block-world scene for the character to stand in: flat bands of
+// sky, a slab cloud, a stepped far hill and a strip of flecked lawn with a
+// lighter top face. `gy` is the top of the grass. Painted once per size.
 function drawCardWindow(win, gy) {
-  const x = win.x, y = win.y, w = win.w, h = win.h;
-  PX.rect(x, y, w, h, PAL.ink);
-  const ix = x + 1, iy = y + 1, iw = w - 2, ih = h - 2;
-  if (iw < 2 || ih < 2) return;
-  uiClip(ix, iy, iw, ih, () => {
-    const mid = iy + Math.floor((gy - iy) * 0.45);
-    PX.rect(ix, iy, iw, ih, PAL.sk3);
-    PX.dither(ix, mid - 2, iw, 2, PAL.sk2, 0.5);
-    PX.rect(ix, mid, iw, gy - mid, PAL.sk2);
-    if (iw >= 30 && gy - iy >= 22) {                       // a small cloud, top right
-      const cx = ix + iw - 16, cy = iy + 5;
-      PX.rect(cx, cy + 2, 12, 3, PAL.white);
-      PX.rect(cx + 2, cy, 5, 2, PAL.white);
-      PX.rect(cx + 6, cy + 1, 4, 1, PAL.white);
-      PX.rect(cx + 1, cy + 4, 10, 1, PAL.sk1);
-    }
-    PX.ellipse(ix + Math.floor(iw * 0.28), gy + 2, Math.floor(iw * 0.42), 5, PAL.gr2);   // far hill
-    PX.rect(ix, gy, iw, iy + ih - gy, PAL.gr3);
-    PX.rect(ix, gy, iw, 1, PAL.gr2);
-    for (let i = 3; i < iw - 2; i += 9) {                  // tufts
-      PX.px(ix + i, gy + 2 + (i % 3), PAL.gr4);
-      PX.px(ix + i + 1, gy + 1 + (i % 3), PAL.gr4);
-      PX.px(ix + i + 4, gy + 3 + (i % 2), PAL.gr2);
-    }
+  const w = win.w, h = win.h;
+  const g = gy - win.y;                     // grass top, measured inside the window
+  PX.cached('cardwin|' + w + '|' + h + '|' + g, win.x, win.y, w, h, () => {
+    PX.rect(0, 0, w, h, PAL.black);                       // a dark one-pixel frame
+    const iw = w - 2, ih = h - 2;
+    if (iw < 2 || ih < 2) return;
+    uiClip(1, 1, iw, ih, () => {
+      const band = Math.max(2, Math.floor((g - 1) / 4));
+      PX.rect(1, 1, iw, ih, PAL.sk4);
+      PX.rect(1, 1 + band, iw, ih, PAL.sk3);
+      PX.rect(1, 1 + band * 2, iw, ih, PAL.sk2);
+      if (iw >= 30 && g >= 22) {                           // a slab cloud, top right
+        const cx = 1 + iw - 20, cy = 4;
+        PX.rect(cx + 4, cy, 8, 2, PAL.white);
+        PX.rect(cx, cy + 2, 16, 3, PAL.white);
+        PX.rect(cx, cy + 5, 16, 1, PAL.g1);
+      }
+      // Far hill: three stacked slabs
+      const hw = Math.floor(iw * 0.6 / 4) * 4, hx = 1 + Math.floor(iw * 0.06);
+      if (g >= 16 && hw >= 16) {
+        PX.rect(hx + 8, g - 6, hw - 16, 2, PAL.gr1);
+        PX.rect(hx + 4, g - 4, hw - 8, 2, PAL.gr2);
+        PX.rect(hx + 8, g - 4, hw - 16, 2, PAL.gr2);
+        PX.rect(hx, g - 2, hw, 2, PAL.gr2);
+        PX.rect(hx + 4, g - 4, 4, 1, PAL.gr1); PX.rect(hx + hw - 8, g - 4, 4, 1, PAL.gr1);
+        PX.rect(hx, g - 2, 4, 1, PAL.gr1); PX.rect(hx + hw - 4, g - 2, 4, 1, PAL.gr1);
+      }
+      PX.tex(1, g, iw, 1 + ih - g, PAL.gr3, [PAL.gr2, PAL.gr4], 0.22, 5);
+      PX.rect(1, g, iw, 2, PAL.gr2);                       // the lawn's lighter top face
+    });
   });
 }
 
@@ -1098,7 +1138,7 @@ function drawCharacterCard(x, y, w, h, card) {
   const L = layoutCard(I, card, box);
 
   // Header
-  PX.panel(L.tabX, I.y + 1, L.tabW, 11, PAL.ye2, PAL.ink, 1);
+  PX.block(L.tabX, I.y + 1, L.tabW, 11, { l: PAL.ye1, m: PAL.ye2, d: PAL.ye4 });
   PX.rect(L.tabX + 1, I.y + 10, L.tabW - 2, 1, PAL.ye3);
   PX.spr('ui_magnifier', L.tabX + 2, I.y + 2);
   if (L.tabText) uiText('I SPY', L.tabX + 13, I.y + 3, { font: 'bold', color: PAL.ink });
@@ -1139,8 +1179,7 @@ function drawCharacterCard(x, y, w, h, card) {
     let px = L.center ? cx - Math.floor(pw / 2) : L.tx;
     let py = ty;
     if (L.pillBelow) { px = win.x + Math.floor((win.w - pw) / 2); py = win.y + win.h + 3; }
-    PX.panel(px, py, pw, L.pillH, tn.pill, tn.pillDark, 1);
-    PX.rect(px + 1, py + 1, pw - 2, 1, tn.pillLit);
+    PX.block(px, py, pw, L.pillH, { l: tn.pillLit, m: tn.pill, d: tn.pillDark });
     for (let i = 0; i < L.titleLines.length; i++) {
       uiText(L.titleLines[i], px + Math.floor(pw / 2), py + 3 + i * 7,
         { color: PAL.white, align: 'center', shadow: tn.pillDark });
@@ -1169,8 +1208,7 @@ function drawCharacterCard(x, y, w, h, card) {
     // "There is more": a small arrow at the end of the last line, nodding
     if (more) {
       const ay = ty + (lines.length - 1) * L.lh + 2, ax = L.tx + L.tw - 5 + PX.anim(2, 20);
-      PX.rect(ax, ay, 1, 7, PAL.ye2); PX.rect(ax + 1, ay + 1, 1, 5, PAL.ye2);
-      PX.rect(ax + 2, ay + 2, 1, 3, PAL.ye2); PX.px(ax + 3, ay + 3, PAL.ye2);
+      PX.rect(ax, ay, 2, 6, PAL.ye2); PX.rect(ax + 2, ay + 2, 2, 2, PAL.ye2);   // a stepped block arrow
     }
   });
 
@@ -1190,8 +1228,8 @@ function drawCycleIndicator(I, dotCol, trackCol) {
     const x0 = I.x + Math.floor((I.w - dotsW) / 2);
     for (let i = 0; i < total; i++) {
       if (i === panelCycleIdx) {
-        PX.rect(x0 + i * sp, y, 2, 2, PAL.ye2);
-        if (sp >= 5) { PX.rect(x0 + i * sp - 1, y, 4, 2, PAL.ye2); PX.rect(x0 + i * sp, y - 1, 2, 4, PAL.ye2); }
+        if (sp >= 5) PX.rect(x0 + i * sp - 1, y - 1, 4, 4, PAL.ye2);
+        else PX.rect(x0 + i * sp, y, 2, 2, PAL.ye2);
       } else {
         PX.rect(x0 + i * sp, y, 2, 2, dotCol);
       }
@@ -1363,14 +1401,17 @@ function layoutCareSplit(I, digits, L) {
   return false;
 }
 
-// One raised colour block with its letter
+// One colour cube with its letter: a lighter top face, the front face with
+// the letter on it, and a darker bottom and right edge. No outline.
 function drawCareBlock(x, y, v, b, ls) {
-  PX.panel(x, y, b, b, v.fill, PAL.ink, 1);
-  PX.rect(x + 1, y + 1, b - 2, 1, v.lit);
-  PX.rect(x + 1, y + 1, 1, b - 2, v.lit);
-  PX.rect(x + 1, y + b - 2, b - 2, 1, v.dark);
-  PX.rect(x + b - 2, y + 1, 1, b - 2, v.dark);
-  const lx = x + Math.floor((b - 7 * ls) / 2), ly = y + Math.floor((b - 7 * ls) / 2);
+  const topH = b >= 20 ? 3 : 2;
+  PX.rect(x, y, b, b, v.fill);
+  PX.rect(x, y, b, topH, v.lit);                          // top face
+  PX.rect(x, y, 1, b, v.lit);
+  PX.rect(x, y + b - 1, b, 1, v.dark);
+  PX.rect(x + b - 1, y + topH, 1, b - topH, v.dark);
+  const lx = x + Math.floor((b - 7 * ls) / 2);
+  const ly = y + topH + Math.floor((b - topH - 1 - 7 * ls) / 2);
   uiText(v.letter, lx, ly, { font: 'bold', scale: ls, color: PAL.white, shadow: v.dark });
 }
 
@@ -1629,22 +1670,20 @@ function updateDrawConfetti() {
 }
 updateDrawConfetti.pixel = true;
 
-// A round pixel flower for the banner: six petals around a yellow centre.
-// `turn` (0 or 1) swaps the light and dark petals so the flower twinkles.
+// A block flower for the banner: eight square petal blocks in a ring round
+// a square yellow centre. `turn` (0 or 1) swaps the light and dark petals
+// so the flower twinkles.
+const BLOOM_RING = [[0, 0], [1, 0], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2], [0, 1]];
 function drawBloom(cx, cy, r, petal, petalLit, turn) {
-  const ring = r * 0.56, pr = Math.max(1, Math.round(r * 0.4));
-  for (let pass = 0; pass < 2; pass++) {
-    for (let i = 0; i < 6; i++) {
-      const a = i * Math.PI / 3 + Math.PI / 6;
-      const bx = cx + Math.round(Math.cos(a) * ring), by = cy + Math.round(Math.sin(a) * ring);
-      if (pass === 0) PX.circle(bx, by, pr + 1, PAL.ink);
-      else PX.circle(bx, by, pr, (i + turn) % 2 ? petal : petalLit);
-    }
+  const c = Math.max(2, Math.floor((r * 2 + 1) / 3));
+  const x0 = cx - Math.floor(c * 3 / 2), y0 = cy - Math.floor(c * 3 / 2);
+  const dark = PX.mix(petal, PAL.black, 0.3);
+  for (let i = 0; i < 8; i++) {
+    const lit = (i + turn) % 2 === 0;
+    PX.block(x0 + BLOOM_RING[i][0] * c, y0 + BLOOM_RING[i][1] * c, c, c,
+      { l: lit ? PAL.white : petalLit, m: lit ? petalLit : petal, d: lit ? petal : dark });
   }
-  const cr = Math.max(1, Math.round(r * 0.3));
-  PX.circle(cx, cy, cr + 1, PAL.ink);
-  PX.circle(cx, cy, cr, PAL.ye2);
-  PX.px(cx - 1, cy - 1, PAL.ye1);
+  PX.block(x0 + c, y0 + c, c, c, { l: PAL.ye1, m: PAL.ye2, d: PAL.ye3 });
 }
 
 // The celebration banner: "100 SMILES!" in big pixel letters between two flowers
@@ -1657,20 +1696,24 @@ function drawMilestoneBanner() {
   const r = s >= 3 ? 10 : 5;                      // flower size
   const side = r * 2 + (s >= 3 ? 14 : 8);         // room for a flower at each end
   const tw = uiTextW(big, 'bold', s), sw = uiTextW(sub, 'small', ss);
-  const w = Math.min(PX.W - 4, Math.max(tw, sw) + 2 * side);
-  const h = 7 * s + 5 * ss + 6 * ss + 14;
+  // The frame is a ring of half-blocks, so the banner is a whole number of them
+  const w = Math.min(Math.floor((PX.W - 4) / 8), Math.ceil((Math.max(tw, sw) + 2 * side) / 8)) * 8;
+  const h = Math.ceil((7 * s + 5 * ss + 6 * ss + 18) / 8) * 8;
   const x = Math.floor((PX.W - w) / 2);
   const y = Math.max(2, Math.round(PX.H * 0.38 - h / 2));
   const cx = x + Math.floor(w / 2);
   const beat = Math.floor(PX.tick / 12) % 2;
 
-  PX.alpha(0.3, () => PX.panel(x + 2, y + 3, w, h, PAL.black, null, 2));   // drop shadow
-  PX.panel(x, y, w, h, PAL.sk8, PAL.ink, 2);
-  PX.box(x + 2, y + 2, w - 4, h - 4, PAL.ye3);
-  PX.rect(x + 2, y + 2, w - 4, 1, PAL.ye2);
-  PX.rect(x + 2, y + 2, 1, h - 4, PAL.ye2);
+  // A dark slab framed by a ring of small gold blocks, painted once per size
+  PX.alpha(0.3, () => PX.rect(x + 3, y + 3, w, h, PAL.black));             // block shadow
+  PX.cached('banner|' + w + '|' + h, x, y, w, h, () => {
+    PX.blocks(0, 0, w, h, { l: PAL.ye1, m: PAL.ye2, d: PAL.ye4 }, 8, { flecks: [PAL.ye1, PAL.ye3], amount: 0.2 });
+    PX.rect(6, 6, w - 12, h - 12, PAL.sk8);
+    PX.rect(6, 6, w - 12, 1, PAL.black);
+    PX.rect(6, 6, 1, h - 12, PAL.black);
+  });
 
-  const ty = y + 7;
+  const ty = y + Math.floor((h - (7 * s + 4 * ss + 5 * ss + ss)) / 2);
   const tx = cx - Math.floor(tw / 2);
   uiText(big, tx + Math.max(1, s >> 1), ty + Math.max(1, s >> 1), { font: 'bold', scale: s, color: PAL.or3 });
   uiText(big, tx, ty, { font: 'bold', scale: s, color: PAL.ye2 });
@@ -1679,12 +1722,12 @@ function drawMilestoneBanner() {
 
   // A flower at each end, bobbing in turn, with a few small ones for company
   const fy = y + Math.floor(h / 2);
-  drawBloom(x + 6 + r, fy - beat, r, PAL.pi3, PAL.pi2, beat);
-  drawBloom(x + w - 7 - r, fy - (1 - beat), r, PAL.bl2, PAL.bl1, 1 - beat);
+  drawBloom(x + 10 + r, fy - beat, r, PAL.pi3, PAL.pi2, beat);
+  drawBloom(x + w - 11 - r, fy - (1 - beat), r, PAL.bl2, PAL.bl1, 1 - beat);
   if (s >= 3) {
-    PX.spr('ui_flower', x + 5, y + 4 + beat, { pal: UI_FLOWER_YELLOW });
-    PX.spr('ui_flower', x + w - 6, y + h - 5 - beat, { pal: UI_FLOWER_PINK });
-    PX.spr('ui_flower', x + w - 6, y + 4 + (1 - beat), { pal: UI_FLOWER_WHITE });
-    PX.spr('ui_flower', x + 5, y + h - 5 - (1 - beat), { pal: UI_FLOWER_PURPLE });
+    PX.spr('ui_flower', x + 12, y + 12 + beat, { pal: UI_FLOWER_YELLOW });
+    PX.spr('ui_flower', x + w - 13, y + h - 13 - beat, { pal: UI_FLOWER_PINK });
+    PX.spr('ui_flower', x + w - 13, y + 12 + (1 - beat), { pal: UI_FLOWER_WHITE });
+    PX.spr('ui_flower', x + 12, y + h - 13 - (1 - beat), { pal: UI_FLOWER_PURPLE });
   }
 }

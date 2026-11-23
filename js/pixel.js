@@ -58,6 +58,7 @@ const PX = {
   SH: 360,       // art pixels down the whole screen
   H: 240,        // art pixels down the garden (the top two thirds)
   HOR: 97,       // art y of the horizon line
+  B: 16,         // one world block, in art pixels (a person is about two blocks tall)
   main: null,    // the main canvas 2D context
   c: null,       // the context PX is currently drawing into
   tick: 0,       // frame counter, for animation
@@ -287,13 +288,84 @@ const PX = {
       }
     }
   },
-  // Soft contact shadow under a character whose feet are at (cx, y).
+  // Square contact shadow under a character whose feet are at (cx, y).
   shadow(cx, y, w) {
     const c = this.c;
     const a = c.globalAlpha;
+    w = Math.max(2, Math.round(w));
     c.globalAlpha = a * 0.22;
-    this.ellipse(cx, y, w / 2, Math.max(1, w / 7), PAL.black);
+    this.rect(Math.round(cx) - (w >> 1), Math.round(y) - 1, w, Math.max(2, Math.round(w / 5)), PAL.black);
     c.globalAlpha = a;
+  },
+
+  // ── Blocks ──────────────────────────────────────────
+  // Repeatable noise 0..1 for an art pixel, so textures never shimmer.
+  hash(x, y, seed = 0) {
+    let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(seed | 0, 1274126177)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  },
+  // Speckled block texture: `base` with chunky 2x2 flecks of the colours in
+  // `flecks`. amount 0..1 is how much of the area is flecked. The pattern is
+  // fixed to (x, y), so pass the same origin every frame.
+  tex(x, y, w, h, base, flecks, amount = 0.3, seed = 0, cell = 2) {
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    const c = this.c;
+    c.fillStyle = base;
+    c.fillRect(x, y, w, h);
+    if (!flecks || !flecks.length) return;
+    for (let j = 0; j < h; j += cell) {
+      for (let i = 0; i < w; i += cell) {
+        const r = this.hash(i, j, seed);
+        if (r >= amount) continue;
+        c.fillStyle = flecks[Math.floor(r / amount * flecks.length) % flecks.length];
+        c.fillRect(x + i, y + j, Math.min(cell, w - i), Math.min(cell, h - j));
+      }
+    }
+  },
+  // One face of a block: a flat fill with a light top/left edge and a dark
+  // bottom/right edge. shade = { l, m, d } (PX.ramp() fits). opts.flecks
+  // adds PX.tex speckle; opts.seed varies it.
+  block(x, y, w, h, shade, opts) {
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    if (w <= 0 || h <= 0) return;
+    if (opts && opts.flecks) this.tex(x, y, w, h, shade.m, opts.flecks, opts.amount, opts.seed || 0);
+    else this.rect(x, y, w, h, shade.m);
+    if (w > 2 && h > 2) {
+      this.rect(x, y, w, 1, shade.l); this.rect(x, y, 1, h, shade.l);
+      this.rect(x, y + h - 1, w, 1, shade.d); this.rect(x + w - 1, y, 1, h, shade.d);
+    }
+  },
+  // A wall of blocks: PX.block repeated on a grid of `size` art pixels,
+  // clipped to the rectangle. Seams line up with (x, y).
+  blocks(x, y, w, h, shade, size, opts) {
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    size = size || this.B;
+    const o = { flecks: opts && opts.flecks, amount: opts && opts.amount, seed: 0 };
+    for (let j = 0; j < h; j += size) {
+      for (let i = 0; i < w; i += size) {
+        o.seed = ((opts && opts.seed) || 0) + i * 7 + j * 13;
+        this.block(x + i, y + j, Math.min(size, w - i), Math.min(size, h - j), shade, o);
+      }
+    }
+  },
+  // Draws fn once into an off-screen art-pixel canvas of w x h and stamps
+  // it at (x, y) every time after that. For big static textures (the lawn,
+  // walls). Change `key` to redraw.
+  cached(key, x, y, w, h, fn) {
+    w = Math.max(1, Math.round(w)); h = Math.max(1, Math.round(h));
+    const store = this._cache || (this._cache = new Map());
+    let cv = store.get(key);
+    if (!cv || cv.width !== w || cv.height !== h) {
+      cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const g = cv.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      this.withTarget(g, fn);
+      if (store.size > 60) store.clear();
+      store.set(key, cv);
+    }
+    this.c.drawImage(cv, Math.round(x), Math.round(y));
   },
   // Runs fn with everything drawn at the given opacity (0..1).
   alpha(a, fn) {
@@ -453,8 +525,9 @@ const PX = {
   },
 
   // ── Photos (faces in flowers) ───────────────────────
-  // Draws a photo at full screen resolution inside a pixel-stepped circle
-  // of radius r art pixels, so faces stay recognisable but sit on the grid.
+  // Draws a photo at full screen resolution as a square 2r+1 art pixels
+  // across, centred on (cx, cy). The photo itself is never pixelated or
+  // repainted: faces stay real photos, just cropped square for the blocks.
   photo(img, cx, cy, r) {
     const src = img && (img.elt || img.canvas || img);
     if (!src || !src.width) return;
@@ -469,14 +542,6 @@ const PX = {
       const side = Math.min(src.width, src.height);
       g.imageSmoothingQuality = 'high';
       g.drawImage(src, (src.width - side) / 2, (src.height - side) / 2, side, side, 0, 0, d, d);
-      g.globalCompositeOperation = 'destination-in';
-      g.fillStyle = '#000';
-      g.beginPath();
-      for (let dy = -r; dy <= r; dy++) {
-        const hw = Math.round(Math.sqrt((r + 0.35) * (r + 0.35) - dy * dy));
-        g.rect((r - hw) * this.S, (dy + r) * this.S, (hw * 2 + 1) * this.S, this.S);
-      }
-      g.fill();
       cache[r] = m;
     }
     const c = this.c;
@@ -630,7 +695,8 @@ const PX = {
   },
 
   // ── Sky ─────────────────────────────────────────────
-  // Paints a banded, dithered vertical gradient into the sky layer.
+  // Paints a vertical gradient into the sky layer as flat bands, each a
+  // whole number of half-blocks tall (no dithering in the block world).
   // stops = ['#rrggbb', ...] from top to horizon. Cached until `key` changes.
   skyGradient(stops, key) {
     if (key === this._skyGradKey && this._skyGrad) return this._skyGrad;
@@ -640,14 +706,15 @@ const PX = {
     const g = cv.getContext('2d');
     const img = g.createImageData(w, h);
     const rgb = stops.map(s => { const v = parseInt(s.slice(1), 16); return [(v >> 16) & 255, (v >> 8) & 255, v & 255]; });
-    const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
     const span = Math.max(1, this.HOR + 6);
+    const band = this.B / 2, steps = 3;       // bands between each pair of stops
     for (let y = 0; y < h; y++) {
-      const p = Math.min(0.9999, y / span) * (rgb.length - 1);
-      const i0 = Math.floor(p), fr = p - i0;
+      const yb = Math.floor(y / band) * band;
+      const p = Math.min(0.9999, yb / span) * (rgb.length - 1);
+      const i0 = Math.floor(p), fr = Math.round((p - i0) * steps) / steps;
+      const a = rgb[i0], b2 = rgb[Math.min(rgb.length - 1, i0 + 1)];
+      const c = [a[0] + (b2[0] - a[0]) * fr, a[1] + (b2[1] - a[1]) * fr, a[2] + (b2[2] - a[2]) * fr];
       for (let x = 0; x < w; x++) {
-        const th = (bayer[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
-        const c = rgb[fr > th ? i0 + 1 : i0];
         const o = (y * w + x) * 4;
         img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
       }

@@ -17,6 +17,7 @@ function setup() {
   canvas.id("canvas");
   colorMode(HSL, 360, 100, 100, 255);
   PX.resize(drawingContext, width, height);
+  G3.init(width, splitY());
   PX.loadFonts();
   loadSmileStats();
 
@@ -176,23 +177,31 @@ function draw() {
   }
 
   // ── Garden render ───────────────────────────────────
-  // The garden is painted back to front in art pixels straight onto a
-  // cleared canvas. After the characters are in, the whole thing is tinted
-  // for time of day, glowing things are added on top, and only then is the
-  // sky slipped in *behind* everything, so the tint never dulls the sunset.
+  // The garden is a 3D block world drawn by G3 on its own canvas behind
+  // this one. Every module's draw function builds its boxes the first time
+  // and then just poses them; G3.render() draws the lot. This canvas is
+  // kept clear over the garden so the 3D view shows through, and the 2D
+  // extras (speech bubbles, forecast, banners) are laid on top of it.
   const gctx = drawingContext;
   gctx.clearRect(0, 0, width, splitY());
   PX.tick = frameCount;
-  PX.begin();
+  G3.beginFrame(frameCount);
+  G3.setSky(skyStops(), Math.floor(timeOfDay * 900) + '|' + Math.round(weatherAlpha * 20));
+  G3.setLight(timeOfDay, Math.min(weatherAlpha, 1), {
+    r: lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'r'), g: lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'g'),
+    b: lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'b'), a: lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'a'),
+  });
 
-  PX.call(drawTown);
-  PX.call(drawGround);
-  PX.call(drawTrees);
-  PX.call(drawGrass);
-  PX.call(drawSchool);
+  G3.call(drawTown);
+  G3.call(drawGround);
+  G3.call(drawTrees);
+  G3.call(drawGrass);
+  G3.call(drawSchool);
   updatePuddles();
-  PX.call(drawPuddles);
+  G3.call(drawPuddles);
   updateWeather();
+  G3.call(drawSkyLayer);      // sun, moon, stars, fair-weather clouds
+  G3.call(drawWeatherSky);    // storm clouds, rainbow, lightning
 
   // Updates
   for (let c of creatures) c.update();
@@ -294,42 +303,18 @@ if (groundhog) {
   for (let tc of teachers)     renderList.push({ wy: tc.wy, obj: tc });
   for (let ak of arrivalKids)  renderList.push({ wy: ak.wy, obj: ak });
 
-  // The scenery is finished: tint it for the time of day, then switch on its
-  // lights (windows, lamps) so they glow behind the characters, not over them.
-  applyGardenTint(drawingContext);
-  PX.flushLights();
+  // Everyone poses their model (no sorting needed: it is real depth now)
+  for (let item of renderList) G3.drawEntity(item.obj);
+  for (let c of creatures) G3.drawEntity(c);     // they hide themselves at night
+  for (let b of birds_flock) G3.drawEntity(b);
+  G3.call(updateAndDrawFireflies);
+  G3.call(drawWeatherFront);                     // the rain
+  G3.render();
 
-  // Characters and flowers go on their own layer, tinted the same way
-  renderList.sort((a, b) => a.wy - b.wy);
-  const layer = PX.beginLayer();
-  for (let item of renderList) PX.drawEntity(item.obj);
-  applyGardenTint(layer);
-  PX.endLayer();
-  PX.flushLights();   // anything a character switched on (kept bright)
-
-  // Sky goes in last, behind the world
-  drawSkyBehind();
-
-  // Speech bubbles
+  // 2D on top of the garden
+  PX.begin();
   speechBubbles = speechBubbles.filter(b => b.update());
   for (let b of speechBubbles) PX.drawEntity(b);
-
-  // Foreground rain — renders over characters for depth
-  PX.call(drawWeatherFront);
-
-  // Flying creatures above ground (fade out at night)
-  const creatureAlpha = 1.0 - nightAmount();
-  if (creatureAlpha > 0.05) {
-    drawingContext.globalAlpha = creatureAlpha;
-    for (let c of creatures) PX.drawEntity(c);
-    drawingContext.globalAlpha = 1.0;
-  }
-  for (let b of birds_flock) PX.drawEntity(b);
-
-  // Fireflies at night
-  PX.call(updateAndDrawFireflies);
-  PX.flushLights();
-
   PX.call(drawWeatherForecast);
   drawGardenLabels();
   PX.end();
@@ -539,45 +524,6 @@ if (groundhog) {
 
 // ── Garden render helpers ─────────────────────────────
 
-// Colours whatever has been painted on a canvas so far for the time of day
-// (and storms), leaving transparent areas, like the still-empty sky, alone.
-function applyGardenTint(c) {
-  const layers = [];
-  const a = lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'a');
-  if (a > 0.01) {
-    const r = Math.round(lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'r'));
-    const g = Math.round(lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'g'));
-    const b = Math.round(lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'b'));
-    layers.push([`rgb(${r},${g},${b})`, a]);
-  }
-  // Storm grey, eased off at night so a night storm does not go black
-  const storm = Math.min(weatherAlpha, 1) * 0.26 * (1 - 0.5 * nightAmount());
-  if (storm > 0.01) layers.push(['#39445c', storm]);
-  if (!layers.length) return;
-  c.globalCompositeOperation = 'source-atop';
-  for (const [col, alpha] of layers) {
-    c.globalAlpha = alpha;
-    c.fillStyle = col;
-    c.fillRect(0, 0, PX.W, PX.H);
-  }
-  c.globalAlpha = 1;
-  c.globalCompositeOperation = 'source-over';
-}
-
-// Paints the sky layer (gradient, then sun/moon/stars/clouds and weather)
-// and slides it in behind everything already on the canvas.
-function drawSkyBehind() {
-  const sky = PX._skyCv.getContext('2d');
-  const key = Math.floor(timeOfDay * 900) + '|' + Math.round(weatherAlpha * 20);
-  sky.drawImage(PX.skyGradient(skyStops(), key), 0, 0);
-  PX.withTarget(sky, drawSkyLayer);
-  PX.withTarget(sky, drawWeatherSky);
-  const c = drawingContext;
-  c.globalCompositeOperation = 'destination-over';
-  c.drawImage(PX._skyCv, 0, 0);
-  c.globalCompositeOperation = 'source-over';
-}
-
 // Big announcements over the garden: group photos and rain hat time.
 function drawGardenLabels() {
   const banner = (label, alpha, y, color) => {
@@ -753,6 +699,7 @@ function addFlower(wx, wy, hsl) {
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   PX.resize(drawingContext, width, height);
+  G3.resize(width, splitY());
 }
 
 // Toggles fullscreen mode on mouse click

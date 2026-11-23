@@ -15,21 +15,21 @@ function splitY()    { return PX.H * PX.S; }
 // Returns the screen y of the horizon line
 function gndHorizon(){ return PX.HOR * PX.S; }
 
-// Converts normalized world coordinates (0-1) to SCREEN pixel positions.
-// Only the flying creatures (and the cat that hunts them) work in screen
-// pixels; everything else uses worldToPx below.
+// Converts normalized world coordinates (0-1) to SCREEN pixel positions:
+// where that spot on the lawn appears through the 3D camera. Only the
+// flying creatures (and the cat that hunts them) work in screen pixels.
 function worldToScreen(wx, wy) {
-  return {
-    sx: wx * PX.W * PX.S,
-    sy: lerp(gndHorizon(), splitY(), wy)
-  };
+  const p = worldToPx(wx, wy);
+  return { sx: p.x * PX.S, sy: p.y * PX.S };
 }
 
-// Converts normalized world coordinates to ART pixels: the point where a
-// character's feet (or a flower's stem) touch the ground. Pixel-art
-// characters are all drawn at one size; depth comes from y-position alone.
+// Converts normalized world coordinates to ART pixels: where that spot on
+// the lawn appears on screen. The garden is 3D now, so this is the camera's
+// view of the ground point; use it only for 2D things laid over the garden
+// (speech bubbles, labels). G3.artAt(wx, wy, height) does the same for a
+// point above the ground.
 function worldToPx(wx, wy) {
-  return PX.toPx(wx, wy);
+  return G3.ready ? G3.artAt(wx, wy, 0) : PX.toPx(wx, wy);
 }
 
 // ── Day/Night helpers ─────────────────────────────────

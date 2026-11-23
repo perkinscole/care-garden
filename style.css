@@ -17,3 +17,17 @@ canvas {
   display: block;
   image-rendering: pixelated;   /* keep art pixels square on high-DPI screens */
 }
+
+/* CARE Garden 2: the 3D garden is its own canvas behind the p5 canvas,
+   which stays transparent over the garden and draws the dashboard. */
+#garden3d {
+  position: absolute;
+  top: 0; left: 0;
+  z-index: 0;
+  image-rendering: auto;
+}
+#canvas {
+  position: absolute;
+  top: 0; left: 0;
+  z-index: 1;
+}

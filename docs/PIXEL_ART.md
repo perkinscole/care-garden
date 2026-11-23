@@ -1,6 +1,13 @@
-# CARE Garden pixel-art guide
+# CARE Garden 2 pixel-art guide (2D layer)
 
-Everything on screen is pixel art drawn on one shared grid of "art pixels".
+> In CARE Garden 2 the garden itself is a 3D block world: see
+> `GARDEN_3D.md`. This page covers the 2D layer that is still drawn with
+> `PX`: the dashboard, I SPY cards, speech bubbles, the forecast strip,
+> banners and the hats over the camera view. Parts of it that describe
+> drawing the garden (depth sorting, tints, the sky layer, the school
+> contract) are history.
+
+Everything in the 2D layer is blocky pixel art drawn on one shared grid of "art pixels".
 This page is the contract every drawing module follows. Read it before you
 touch any `draw` code.
 
@@ -76,7 +83,7 @@ PX.hsl(h, s, l)                     // -> '#rrggbb'
 PX.ramp(h, s, l)                    // -> { o, d, m, l, h } shaded ramp for a runtime hue
 PX.mix(a, b, t)
 
-PX.photo(img, cx, cy, r)            // a real photo inside a stepped circle
+PX.photo(img, cx, cy, r)            // a real photo, cropped square (2r+1 across)
 PX.light(() => { ... })             // draw after the night tint (glows)
 ```
 
@@ -113,35 +120,87 @@ Big structures (the school, hills, roads) are better drawn with `PX.rect`
 and friends than typed out as giant sprites. Small repeated details (a
 window, a door, a car, a tree) are good sprites.
 
-## House style
+## Block style (CARE Garden 2)
 
-**Sizes.** Adults about 30 art pixels tall, students about 22–24, the ram
-about 22 tall and 30 long. The school's doors are sized for those people.
+This version of the garden is a **block world**: everything looks as if it
+were built out of cubes, like a voxel sandbox game. The art is our own. Do
+not copy any game's textures, creatures, characters, logo, font or menus;
+take only the idea that the world is made of square blocks.
 
-**Outline.** Characters, animals, flowers and held objects get a 1px
-`PAL.ink` outline so they read against the grass. Scenery (buildings, trees,
-hills, clouds) has no black outline: it uses darker shades of its own colour
-for edges.
+**The block.** One block is `PX.B` = 16 art pixels. Half blocks (8), quarter
+blocks (4) and 2-pixel "chunks" are the only other sizes worth thinking in.
+Buildings, trees, hills and clouds are stacks of whole, half and quarter
+blocks whose edges land on that grid.
 
-**Light.** The sun is top-left. Highlights go on top and left edges, shadows
-on the bottom and right. Three or four shades per material is plenty.
+**Only rectangles.** No curves, circles, ellipses or slanted edges. Round
+things become squares or stacks of rectangles (a square sun, a square moon,
+clouds made of two or three slabs, square wheels, a tree canopy of cubes).
+Slopes are staircases with steps of at least 2 pixels. Avoid `PX.ellipse`,
+`PX.circle`, `PX.ring` and diagonal `PX.line`/`PX.poly`.
 
-**Palette.** Use `PAL` (in `js/pixel.js`). Ramps run light to dark
-(`gr1`…`gr6`, `br1`…`br5`). For colours chosen at runtime (shirts, petals,
-cars) use `PX.ramp(hue)` so they shade the same way. Don't invent near
+**Texture.** A surface is one flat colour with chunky 2×2 flecks of a
+lighter and a darker shade (`PX.tex`), never smooth shading, dithering or
+single-pixel noise. Three shades per material. Big surfaces show their
+block seams: use `PX.block` / `PX.blocks`, which give each block a light top
+and left edge and a dark bottom and right edge. Where the top of something
+would be seen (a hedge, a canopy, a roof, a block of dirt) give it a
+lighter 2–3 pixel "top face" strip so it reads as a cube, not a card.
+
+**No black outlines.** Edges are a darker shade of the thing's own colour
+(in sprites, point the old outline letter `o` at a dark shade of the main
+material, or drop it). Contact shadows (`PX.shadow`, now a square) and the
+light/dark faces keep things readable on the grass.
+
+**Box people.** A person is six boxes: a head 8×8, a torso, two arms and
+two legs, all straight-sided. Adults are 2 blocks tall (32: head 8, torso
+12, legs 12), students about 1½ (24: head 8, torso 8, legs 8). Seen from
+the side the torso is about 6 wide and each limb 4 wide; from the front or
+back the torso is 8 wide with a 4-wide arm each side. Faces are a few
+pixels on the flat front of the head: eyes two pixels wide (white +
+pupil), a short mouth, hair as a cap of solid colour over the top rows and
+down the back. Limbs stay rigid boxes and swing as stepped (sheared)
+blocks; nothing bends at a knee or elbow. Each named person must still be
+recognisable (see "Key People" in `CLAUDE.md`): hair colour and shape,
+glasses, beard, clothes.
+
+**Box animals.** Same idea: a box body, a box head, four post legs, a
+block tail. The ram's horns are stepped blocks, the goose has a post neck.
+
+**Flowers.** Stems are straight 2-pixel posts with square leaves. A bloom
+is a ring of square petal blocks around the photo.
+
+**Photos stay photos.** Smile photos are never pixelated, recoloured or
+redrawn. `PX.photo(img, cx, cy, r)` now shows the real photo as a square
+`2r+1` art pixels across; give it a dark 1-pixel frame and build the
+blocks around it. The same goes for the gallery and the live camera view.
+
+**Light.** The sun is top-left: top faces lightest, faces toward the
+viewer mid, right-hand and under sides darkest.
+
+**Palette.** Use `PAL` and `PX.ramp(hue)` as before. Don't invent near
 duplicates of palette colours.
 
-**No smooth anything.** No anti-aliasing, no gradients (band or dither
-instead), no blur, no fractional positions, no rotation. Use transparency
-only for whole-object fades and shadows.
+**Animation.** Two to four frames, held 6–10 game frames. Things move in
+whole pixels; sway is a 1–2 pixel shift of a whole block. Particles
+(confetti, sparkles, rain, splashes, hearts, dust) are little squares.
 
-**Animation.** Two to four frames go a long way: a two-frame walk plus an
-idle, a blink, a one-pixel bob. Hold frames for 6–10 game frames. Sway is
-done by shifting whole rows of pixels.
+**Readability first.** This plays on a TV across a room. A character
+should be recognisable from its silhouette.
 
-**Readability first.** This plays on a TV across a room. A character should
-be recognisable from its silhouette, and each named person should be
-recognisable as themselves (see "Key People" in `CLAUDE.md`).
+### Block helpers
+
+```js
+PX.B                                   // 16: one block
+PX.hash(x, y, seed)                    // repeatable 0..1 noise for a pixel
+PX.tex(x, y, w, h, base, [flecks], amount=0.3, seed=0, cell=2)   // flecked fill
+PX.block(x, y, w, h, {l, m, d}, { flecks, amount, seed })        // one bevelled face
+PX.blocks(x, y, w, h, {l, m, d}, size=PX.B, { flecks, amount, seed })  // a wall of them
+PX.cached(key, x, y, w, h, () => { ... })   // draw once (origin 0,0), stamp every frame
+PX.shadow(cx, y, w)                    // square contact shadow
+```
+
+`PX.tex` and `PX.blocks` loop over pixels, so wrap anything bigger than a
+block or two in `PX.cached` rather than redrawing it every frame.
 
 ## Day, night and weather
 
@@ -181,6 +240,9 @@ top-right corner (art y 3–21).
   `cat`, `mrconant`, `principal`, `staff`. Keep each within about 60 wide and
   40 tall (the school may be 120×60); the card enlarges it. Art about 44
   wide or less leaves room for the card's text at double size.
+- **Sizes.** Sprites that are repainted keep their names, frame names and
+  anchors, and stay within a pixel or two of their old sizes unless the
+  module that draws them is updated to match.
 - **Tiny flower.** `drawTinyFlower(x, y, hsl)` draws a hand-held flower
   about 8 pixels tall and 7 wide whose stem bottom is at `(x, y)`.
 - **Flowers** keep their fields (`wx`, `wy`, `hsl`, `type`, `imgs`, `size`,
