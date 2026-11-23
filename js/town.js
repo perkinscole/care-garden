@@ -20,6 +20,8 @@
 // Everything is laid out in art pixels measured up from the horizon
 // (PX.HOR). The school hides the middle of the town, so the landmarks
 // are pinned to the left and right edges of the screen where they show.
+// The low picket fence along the back of the lawn (js/scene.js) covers
+// the bottom few rows, up to about PX.HOR - 5.
 
 // ── Animation state ──────────────────────────────────
 let _bgCars         = null;
@@ -41,8 +43,8 @@ const TOWN_ROWS = {
   main:   -41,   // top of the main town terrace
   back:   -29,   // ground line of the Main Street buildings
   road:   -28,   // top row of Main Street (5 rows deep)
-  front:  -8,    // ground line of the front row of buildings
-  road2:  -7,    // top row of the front street (5 rows deep)
+  front:  -9,    // ground line of the front row of buildings
+  road2:  -8,    // top row of the front street (5 rows deep, just clear of the fence)
 };
 
 // House colour schemes: wall, wall in shade, roof, roof highlight, door.
@@ -61,8 +63,6 @@ const TOWN_CAR_COLORS = [
   [5, 65, 52], [210, 55, 52], [120, 45, 40], [48, 70, 55], [0, 0, 82],
   [350, 60, 55], [180, 50, 48], [25, 58, 50], [0, 60, 48],
 ];
-// The colour sketch.js washes over the garden at full night (TINT_KEYFRAMES)
-const TOWN_NIGHT = '#161c54';
 const TOWN_SKINS = [PAL.sn2, PAL.sn4, PAL.sn1, PAL.sn5];
 const TOWN_HAIR  = [PAL.hrBrown, PAL.hrBlack, PAL.hrBlonde, PAL.hrDark, PAL.hrGinger];
 
@@ -83,9 +83,10 @@ function _initBgElements() {
     h: TOWN_HAIR[(i * 3 + 1) % TOWN_HAIR.length],
   });
   // The same person as they look under the night tint (see _drawTownLights)
+  const night = typeof sceneNightTint === 'function' ? sceneNightTint() : { col: '#161c54', a: 0.56 };
   const atNight = (pal) => ({
-    c: PX.mix(pal.c, TOWN_NIGHT, 0.56), s: PX.mix(pal.s, TOWN_NIGHT, 0.56),
-    h: PX.mix(pal.h, TOWN_NIGHT, 0.56), p: PX.mix(PAL.g5, TOWN_NIGHT, 0.56),
+    c: PX.mix(pal.c, night.col, night.a), s: PX.mix(pal.s, night.col, night.a),
+    h: PX.mix(pal.h, night.col, night.a), p: PX.mix(PAL.g5, night.col, night.a),
   });
 
   // Front street cars
@@ -148,11 +149,22 @@ function _townRand(seed) {
   return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
 }
 
+// The art columns where the school's walls begin and end. The town shows
+// to the left of `l` and to the right of `r` (and over the roofs between).
+function _townSchoolEdges() {
+  if (typeof schoolLayout === 'function') {
+    const L = schoolLayout();
+    return { l: L.wingL, r: L.wingR };
+  }
+  return { l: Math.floor(PX.W * 0.097), r: Math.ceil(PX.W * 0.815) };
+}
+
 // True if art columns x0..x1 are out past the ends of the school, where
-// the town can actually be seen. Night lights are only lit there, because
-// lights are drawn on top of everything, the school included.
+// the town can actually be seen. Only used to skip animating things nobody
+// can see; the night lights are cut to shape exactly (see _drawTownLights).
 function _townSeen(x0, x1) {
-  return x1 < Math.floor(PX.W * 0.09) - 1 || x0 > Math.ceil(PX.W * 0.815) + 1;
+  const e = _townSchoolEdges();
+  return x1 < e.l || x0 >= e.r;
 }
 
 // A window: blue-grey glass with a lighter top row. Remembered so it can
@@ -160,14 +172,14 @@ function _townSeen(x0, x1) {
 function _townWindow(T, x, y, w, h, kind) {
   PX.rect(x, y, w, h, PAL.sl2);
   PX.rect(x, y, w, 1, PAL.sl1);
-  if (_townSeen(x, x + w - 1)) T.windows.push({ x, y, w, h, kind: kind || 'home' });
+  T.windows.push({ x, y, w, h, kind: kind || 'home' });
 }
 
 // A window with a rounded top (the middle pixel pokes up one row)
 function _townArchWindow(T, cx, y, h) {
   PX.px(cx, y - 1, PAL.sl1);
   PX.rect(cx - 1, y, 3, h, PAL.sl2);
-  if (_townSeen(cx - 1, cx + 1)) T.windows.push({ x: cx - 1, y, w: 3, h, kind: 'home', arch: true });
+  T.windows.push({ x: cx - 1, y, w: 3, h, kind: 'home', arch: true });
 }
 
 // A pointed evergreen in one flat colour with a few lit pixels on its left side
@@ -551,14 +563,15 @@ function _buildTown(key) {
   const W = PX.W, H0 = PX.HOR, Y = TOWN_ROWS;
   const T = {
     key, font: PX.fonts.small,
-    back: _townCanvas(), front: _townCanvas(), lights: _townCanvas(),
+    back: _townCanvas(), front: _townCanvas(), lights: _townCanvas(), glow: _townCanvas(),
     chimneys: [], windows: [], lamps: [],
     balloons: null, flag: null, clock: null, lake: null,
     tunnelX: W - 26,
   };
   const rnd = _townRand(42);
-  const seenL = Math.floor(W * 0.09);       // the school starts about here...
-  const seenR = Math.ceil(W * 0.815);       // ...and ends about here
+  const edges = _townSchoolEdges();
+  const seenL = edges.l;                    // the school starts here...
+  const seenR = edges.r;                    // ...and ends here
   const backY = H0 + Y.back, frontY = H0 + Y.front, trailY = H0 + Y.trail;
 
   // ════════════════════════════════════════════════════
@@ -569,9 +582,13 @@ function _buildTown(key) {
     // 1. Far hill, hazy blue-green, with a paler rim where the sun catches it
     const hillCol = PX.mix(PAL.fo3, PAL.sk3, 0.5);
     const hillRim = PX.mix(PAL.fo2, PAL.sk2, 0.55);
+    // (behind the school it sinks out of sight, so that only sky and a few
+    // treetops show over the roofs instead of a band of hill)
     for (let x = 0; x < W; x++) {
       const t = x / W;
-      const y = H0 + Y.hill + Math.round(4 * Math.sin(t * 6.1 + 0.8) + 2 * Math.sin(t * 14.3 + 2.1));
+      const behind = constrain((x - seenL) / 24, 0, 1) * constrain((seenR - x) / 24, 0, 1);
+      const y = H0 + Y.hill + Math.round(4 * Math.sin(t * 6.1 + 0.8) + 2 * Math.sin(t * 14.3 + 2.1) + 8 * behind);
+      if (y >= H0 + Y.upper) continue;
       PX.rect(x, y, 1, H0 + Y.upper - y, hillCol);
       PX.px(x, y, hillRim);
     }
@@ -687,7 +704,7 @@ function _buildTown(key) {
 
     const lamp = (x, y) => {
       PX.spr('townLamp', x, y);
-      if (_townSeen(x - 2, x + 2)) T.lamps.push({ x, y: y - 6 });
+      T.lamps.push({ x, y: y - 6 });
     };
 
     // ── Main Street, behind the school: houses and trees ──
@@ -730,7 +747,7 @@ function _buildTown(key) {
 
     // ── Front street, left: Fiske's and CVS ──
     _townFiskes(T, 0, frontY);
-    _townCVS(T, 36, frontY);
+    _townCVS(T, 35, frontY);
 
     // ── Front street, right: houses and garden trees ──
     _townCottage(T, W - 107, frontY, TOWN_HOUSES[0]);
@@ -759,7 +776,7 @@ function _buildTown(key) {
       if (w.kind === 'shop' && w.h > 2) PX.rect(w.x, w.y + w.h - 1, w.w, 1, PAL.ye2);
       if (w.arch) PX.px(w.x + 1, w.y - 1, PAL.ye2);
     }
-    if (T.clock && _townSeen(T.clock.x, T.clock.x)) PX.circle(T.clock.x, T.clock.y, 2, PAL.ye1);
+    if (T.clock) PX.circle(T.clock.x, T.clock.y, 2, PAL.ye1);
     for (const l of T.lamps) {
       // a soft pool of light around each lamp
       lg.globalAlpha = 0.22;
@@ -792,6 +809,8 @@ function drawTown() {
 
     PX.c.drawImage(T.back, 0, 0);
     _drawTownLake(T);
+    // When the weather clears, the rainbow comes down in front of the far hills
+    if (typeof queueRainbowFoot === 'function') queueRainbowFoot(T.back, _townSchoolEdges().l);
 
     // Rail trail: walkers behind, bikes in front, then the bridge railing
     // and the tunnel mouth over both
@@ -878,32 +897,35 @@ function _drawTownClockHand(T) {
   if (!(hx && hy)) PX.px(T.clock.x + hx * 2, T.clock.y + hy * 2, PAL.ink);
 }
 
-// Night lights: windows, street lamps and headlights. These are drawn
-// after the night tint, on top of the whole garden, so anything that
-// should still be in front of a lit window is drawn again as a silhouette.
+// Night lights: windows, street lamps and headlights. They have to be
+// drawn after the night tint, which means on top of the whole garden, so
+// they are first gathered in a scratch layer and everything that stands in
+// front of the town (the school, the fence, the swaying trees) is cut out
+// of it. No window shines through a wall or a tree, and the ones right
+// beside the school are lit like all the others.
 function _drawTownLights(T) {
   const na = nightAmount();
   if (na <= 0.2) return;
   const glow = constrain((na - 0.2) / 0.4, 0, 1);
   const H0 = PX.HOR, Y = TOWN_ROWS;
   PX.light(() => {
-    PX.alpha(glow, () => PX.c.drawImage(T.lights, 0, 0));
+    const g = T.glow.getContext('2d');
+    g.clearRect(0, 0, T.glow.width, T.glow.height);
+    PX.withTarget(g, () => {
+      PX.c.drawImage(T.lights, 0, 0);
 
-    // People walking past the lit shop windows, in their night colours
-    for (const w of _bgWalkers) {
-      const x = Math.round(w.x / PX.S);
-      if (!_townSeen(x - 2, x + 2)) continue;
-      PX.spr('townWalker', x, H0 + Y.road2, { frame: sin(w.phase) > 0 ? 'stand' : 'stride', flip: w.dir < 0, pal: w.nightPal });
-    }
-    _drawTownClockHand(T);
+      // People walking past the lit shop windows, in their night colours
+      for (const w of _bgWalkers) {
+        const x = Math.round(w.x / PX.S);
+        PX.spr('townWalker', x, H0 + Y.road2, { frame: sin(w.phase) > 0 ? 'stand' : 'stride', flip: w.dir < 0, pal: w.nightPal });
+      }
+      _drawTownClockHand(T);
 
-    // Headlights: a bright lamp and a short beam on the road ahead
-    PX.alpha(glow, () => {
+      // Headlights: a bright lamp and a short beam on the road ahead
       const beams = (cars, farY, nearY) => {
         for (const car of cars) {
           const x = Math.round(car.x / PX.S);
           const front = x + car.dir * (car.bus ? 9 : 6);
-          if (!_townSeen(Math.min(x, front) - 8, Math.max(x, front) + 8)) continue;
           const y = (car.dir > 0 ? nearY : farY) - 3;
           PX.px(front - (car.dir > 0 ? 1 : 0), y, PAL.ye1);
           PX.alpha(0.4, () => {
@@ -914,7 +936,15 @@ function _drawTownLights(T) {
       };
       beams(_bgCars2, H0 + Y.road + 3, H0 + Y.road + 5);
       beams(_bgCars, H0 + Y.road2 + 3, H0 + Y.road2 + 5);
+
+      // Cut away whatever stands in front of the town
+      if (typeof drawTownOccluders === 'function') {
+        g.globalCompositeOperation = 'destination-out';
+        drawTownOccluders();
+        g.globalCompositeOperation = 'source-over';
+      }
     });
+    PX.alpha(glow, () => PX.c.drawImage(T.glow, 0, 0));
   });
 }
 

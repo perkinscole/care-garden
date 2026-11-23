@@ -269,10 +269,10 @@ function buildWeatherClouds() {
     { w: 40, h: 12, tier: 1, y: 0.19, at: 0.12 },
     { w: 50, h: 14, tier: 1, y: 0.13, at: 0.21 },
     { w: 44, h: 13, tier: 1, y: 0.17, at: 0.30 },
-    { w: 30, h: 9,  tier: 2, y: 0.24, at: 0.06 },
-    { w: 34, h: 10, tier: 2, y: 0.22, at: 0.14 },
-    { w: 26, h: 8,  tier: 2, y: 0.26, at: 0.23 },
-    { w: 32, h: 9,  tier: 2, y: 0.23, at: 0.32 },
+    { w: 30, h: 9,  tier: 2, y: 0.20, at: 0.06 },
+    { w: 34, h: 10, tier: 2, y: 0.18, at: 0.14 },
+    { w: 26, h: 8,  tier: 2, y: 0.21, at: 0.23 },
+    { w: 32, h: 9,  tier: 2, y: 0.19, at: 0.32 },
   ];
   W.drifting = specs.map(s => {
     const bmp = makeCloudBitmap(s.w, s.h, cumulusLumps(s.w, s.h, rnd));
@@ -328,13 +328,12 @@ function drawCloudCeiling(bmp, y, scroll) {
 
 // ── Sky layer ─────────────────────────────────────────
 
-// Draws the weather that lives in the sky, behind the garden: rainbow,
-// overcast ceilings, far rain, drifting storm clouds and the lightning
-// bolt. Called with PX aimed at the untinted sky layer.
+// Draws the weather that lives in the sky, behind the garden: overcast
+// ceilings, far rain, drifting storm clouds and the lightning bolt.
+// Called with PX aimed at the untinted sky layer. (The rainbow is drawn
+// by drawSkyLayer() in js/scene.js, so that it sits behind the sun.)
 function drawWeatherSky() {
   const na = nightAmount();
-
-  if (rainbowAmount > 0) drawRainbow();
 
   // A strike lights the sky up behind the clouds
   if (lightningAlpha > 0) {
@@ -620,32 +619,37 @@ drawPuddles.pixel = true;
 
 // ── Lightning ─────────────────────────────────────────
 
-// Plans a new jagged bolt from the cloud deck down to the horizon, with
-// one or two side forks. Called once per strike so the bolt holds its
-// shape while it flickers.
+// Plans a new jagged bolt. Only a strip of sky shows above the roofs, so
+// the bolt does not drop straight down: it leaps out of the cloud deck and
+// runs sideways across that strip in long zigzags, forking as it goes,
+// before it comes down behind the skyline. Called once per strike so the
+// bolt holds its shape while it flickers.
 function makeLightningBolt() {
   lightningBolt = [];
-  let x = random(PX.W * 0.06, PX.W * 0.94);
+  const reach = PX.HOR * 0.36;                 // the skyline: below here it is out of sight
+  const dir = random() < 0.5 ? -1 : 1;         // which way it runs
+  let x = dir > 0 ? random(PX.W * 0.06, PX.W * 0.6) : random(PX.W * 0.4, PX.W * 0.94);
   let y = Math.round(PX.HOR * 0.05);
-  const bottom = PX.HOR + 6;
-  let dir = random() < 0.5 ? -1 : 1;
-  while (y < bottom) {
-    const nx = x + dir * random(2, 7);
-    const ny = y + random(4, 8);
-    lightningBolt.push([x, y, nx, ny, y < PX.HOR * 0.25 ? 2 : 1]);
-    // Side fork: a thinner branch heading off the other way
-    if (random() < 0.3 && y > PX.HOR * 0.12) {
-      let fx = x, fy = y;
-      const fdir = -dir;
+  const bottom = PX.HOR * 0.6;
+  let zig = 1;
+  for (let guard = 0; y < bottom && guard < 40; guard++) {
+    // Long shallow strokes one way, short steep ones back
+    const along = zig > 0 ? random(9, 17) : -random(2, 5);
+    const drop  = y < reach ? (zig > 0 ? random(1, 4) : random(3, 6)) : random(5, 9);
+    const nx = x + dir * along, ny = y + drop;
+    lightningBolt.push([x, y, nx, ny, y < reach * 0.6 ? 2 : 1]);
+    // Side fork: a thinner branch that carries on where the bolt turns back
+    if (zig > 0 && random() < 0.45 && y > PX.HOR * 0.1) {
+      let fx = nx, fy = ny;
       const pieces = floor(random(2, 4));
       for (let i = 0; i < pieces; i++) {
-        const gx = fx + fdir * random(3, 7), gy = fy + random(2, 6);
+        const gx = fx + dir * random(4, 9), gy = fy + random(-1, 4);
         lightningBolt.push([fx, fy, gx, gy, 0]);
         fx = gx; fy = gy;
       }
     }
     x = nx; y = ny;
-    if (random() < 0.7) dir = -dir;
+    zig = -zig;
   }
 }
 
@@ -666,41 +670,107 @@ function drawLightningBolt() {
 
 // ── Rainbow ───────────────────────────────────────────
 
-// The rainbow is seven solid bands. It is painted once into a bitmap and
-// then drawn each frame at whatever strength the clearing sky allows.
-let rainbowBmp = null;
-function drawRainbow() {
-  const R = Math.round(PX.HOR * 0.56), band = 2;
-  if (!rainbowBmp || rainbowBmp.R !== R) {
-    const w = R * 2 + 1, h = R + 1;
-    const cv = document.createElement('canvas');
-    cv.width = w; cv.height = h;
-    const g = cv.getContext('2d');
-    const cols = [PAL.re2, PAL.or2, PAL.ye2, PAL.gr2, PAL.wa2, PAL.bl2, PAL.pu2];
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const d = Math.sqrt((x - R) * (x - R) + (y - R) * (y - R));
-        const i = Math.floor((R + 0.5 - d) / band);
-        if (i < 0 || i >= cols.length || d > R + 0.5) continue;
-        g.fillStyle = cols[i];
-        g.fillRect(x, y, 1, 1);
-      }
+// The rainbow is seven solid bands on one big circle. It rises out of Lake
+// Winthrop at the far left, arches over the school's left wing and comes
+// down behind the tower. Most of it is in the sky layer, behind the world;
+// the foot is drawn again in front of the far hills and woods (rainbows do
+// stand in front of distant hills), so it can be followed all the way down
+// to the water. Both pieces are painted once and only blitted afterwards.
+const RAINBOW = { key: '', bmp: null, front: null, frontKey: null, x: 0, footX: 0, footY: 0 };
+const RAINBOW_COLOURS = [PAL.re2, PAL.or2, PAL.ye2, PAL.gr2, PAL.wa2, PAL.bl2, PAL.pu2];
+const RAINBOW_STRENGTH = 0.9;
+
+// Works out the circle for this screen and paints the arch if it is new.
+function rainbowBitmap() {
+  const key = PX.W + '|' + PX.H + '|' + PX.HOR;
+  if (RAINBOW.key === key) return RAINBOW;
+  const band = 2, top = 3;
+  const R = Math.round(PX.HOR * 2);                     // outer radius
+  const footX = 30;                                     // where the outer edge meets the lake
+  const footY = PX.HOR + (typeof TOWN_ROWS !== 'undefined' ? TOWN_ROWS.upper : -55) + 1;
+  const cy = top + R;
+  const cx = Math.round(footX + Math.sqrt(Math.max(0, R * R - (cy - footY) * (cy - footY))));
+  const w = Math.min(PX.W, cx + Math.round(R * 0.8)), h = footY + 1;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const g = cv.getContext('2d');
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const d = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
+      const i = Math.floor((R + 0.5 - d) / band);
+      if (i < 0 || i >= RAINBOW_COLOURS.length || d > R + 0.5) continue;
+      g.fillStyle = RAINBOW_COLOURS[i];
+      g.fillRect(x, y, 1, 1);
     }
-    rainbowBmp = { R, w, h, ax: R, ay: R, frames: [{ cv, fl: cv }] };
   }
-  // Its feet go down behind the town skyline; the arch stands in the
-  // open sky on the left, clear of the school tower and the forecast panel.
-  PX.spr(rainbowBmp, Math.round(PX.W * 0.17), Math.round(PX.HOR * 0.62),
-    { alpha: rainbowAmount * 0.8 });
+  RAINBOW.key = key;
+  RAINBOW.bmp = cv;
+  RAINBOW.front = null;
+  RAINBOW.footX = footX; RAINBOW.footY = footY;
+  return RAINBOW;
+}
+
+// The arch in the sky. Called from the sky layer before the sun is drawn,
+// so the sun and the clouds pass in front of it.
+function drawRainbow() {
+  if (rainbowAmount <= 0) return;
+  const rb = rainbowBitmap();
+  PX.alpha(rainbowAmount * RAINBOW_STRENGTH, () => PX.c.drawImage(rb.bmp, 0, 0));
+}
+
+// The foot of the rainbow in front of the far hills. drawTown() calls this
+// with its painted back layer; the part of the arch that crosses the hills
+// (left of the school, above the lake) is cut out with that layer as a
+// stencil and queued to be drawn after the garden has been tinted.
+function queueRainbowFoot(townBack, schoolLeft) {
+  if (rainbowAmount <= 0 || !townBack) return;
+  const rb = rainbowBitmap();
+  if (!rb.front || rb.frontKey !== townBack) {
+    const cv = rb.front || document.createElement('canvas');
+    cv.width = rb.bmp.width; cv.height = rb.bmp.height;
+    const g = cv.getContext('2d');
+    const w = Math.max(1, Math.min(cv.width, schoolLeft)), h = Math.max(1, rb.footY - 1);
+    g.drawImage(rb.bmp, 0, 0, w, h, 0, 0, w, h);
+    g.globalCompositeOperation = 'destination-in';
+    g.drawImage(townBack, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    rb.front = cv;
+    rb.frontKey = townBack;
+  }
+  const a = rainbowAmount * RAINBOW_STRENGTH;
+  PX.light(() => {
+    PX.alpha(a, () => PX.c.drawImage(rb.front, 0, 0));
+    // ...and its colours shimmer on the water where it comes down
+    const shimmer = PX.anim(2, 20);
+    PX.alpha(a * 0.5, () => {
+      for (let i = 0; i < RAINBOW_COLOURS.length; i++) {
+        const x = rb.footX + i * 2 + 1;
+        PX.rect(x, rb.footY, 2, 1, RAINBOW_COLOURS[i]);
+        if ((i + shimmer) % 2) PX.rect(x + 1, rb.footY + 2, 2, 1, RAINBOW_COLOURS[i]);
+      }
+    });
+  });
 }
 
 // ── Forecast panel ────────────────────────────────────
 
-// Draw the HUD forecast panel showing current weather and upcoming transition
-function drawWeatherForecast() {
-  const panelW = 82, panelH = 49;
-  const px = PX.W - panelW - 4, py = 4;
+// What each kind of weather is called and which icon and colour it gets
+function forecastKinds() {
+  const night = nightAmount() > 0.5;
+  return {
+    sunny:    { icon: night ? 'wx_clear_night' : 'wx_sunny', label: night ? 'Clear' : 'Sunny', col: PAL.ye2 },
+    cloudy:   { icon: 'wx_cloudy',   label: 'Cloudy',   col: PAL.g1  },
+    rainy:    { icon: 'wx_rainy',    label: 'Rain',     col: PAL.wa2 },
+    stormy:   { icon: 'wx_stormy',   label: 'Storm',    col: PAL.pu1 },
+    clearing: { icon: 'wx_clearing', label: 'Clearing', col: PAL.or1 }
+  };
+}
 
+// Draw the HUD forecast strip showing the current weather and what is
+// coming next. It is one slim row in the top right corner, low enough to
+// leave the town's skyline (Town Hall clock, church spire, RAIL TRAIL sign)
+// in view underneath it.
+function drawWeatherForecast() {
   const elapsed  = weatherDuration - weatherTimer;
   const progress = constrain(elapsed / weatherDuration, 0, 1);
   const chance   = floor(constrain(
@@ -710,40 +780,49 @@ function drawWeatherForecast() {
     8, 95
   ));
 
-  const night = nightAmount() > 0.5;
-  const kinds = {
-    sunny:    { icon: night ? 'wx_clear_night' : 'wx_sunny', label: night ? 'Clear' : 'Sunny', col: PAL.ye2 },
-    cloudy:   { icon: 'wx_cloudy',   label: 'Cloudy',       col: PAL.g1  },
-    rainy:    { icon: 'wx_rainy',    label: 'Rain',         col: PAL.wa2 },
-    stormy:   { icon: 'wx_stormy',   label: 'Thunderstorm', col: PAL.pu1 },
-    clearing: { icon: 'wx_clearing', label: 'Clearing',     col: PAL.or1 }
-  };
+  const kinds = forecastKinds();
   const curr = kinds[weatherState] || kinds.sunny;
   const next = kinds[nextWeatherState] || kinds.sunny;
   const frame = PX.anim(2, 24);
 
+  // The strip is as wide as its longest possible labels, so it never
+  // changes size while it is on screen
+  let labelW = 0;
+  for (const k in kinds) labelW = Math.max(labelW, PX.measure(kinds[k].label));
+  labelW = Math.max(labelW, PX.measure('Clear'));
+  const barW = 16;
+  const nextW = Math.max(labelW, barW + 3 + PX.measure('95%'));
+  const panelH = 18;
+  const panelW = 2 + 16 + 3 + labelW + 9 + 16 + 3 + nextW + 3;
+  const px = PX.W - panelW - 3, py = 3;
+
   PX.panel(px, py, panelW, panelH, PAL.ink, PAL.g5, 2);
 
   // NOW: icon, then the label in the colour of the weather
-  PX.spr(curr.icon, px + 4, py + 4, { frame });
-  PX.text('NOW', px + 24, py + 4, { color: PAL.g3 });
-  PX.text(curr.label, px + 24, py + 12, { color: curr.col });
+  let x = px + 2;
+  PX.spr(curr.icon, x, py + 1, { frame });
+  x += 19;
+  PX.text('NOW', x, py + 1, { color: PAL.g3 });
+  // Blinking "live" dot beside it
+  PX.rect(x + PX.measure('NOW') + 3, py + 5, 2, 2, PX.anim(2, 30) ? curr.col : PAL.g5);
+  PX.text(curr.label, x, py + 8, { color: curr.col });
+  x += labelW;
 
-  // Blinking "live" dot in the corner
-  PX.rect(px + panelW - 7, py + 5, 2, 2, PX.anim(2, 30) ? curr.col : PAL.g5);
+  // A small arrow points on to what is coming
+  PX.rect(x + 3, py + 6, 1, 5, PAL.g4);
+  PX.rect(x + 4, py + 7, 1, 3, PAL.g4);
+  PX.px(x + 5, py + 8, PAL.g4);
+  x += 9;
 
-  PX.rect(px + 4, py + 23, panelW - 8, 1, PAL.g5);
-
-  // FORECAST: what is coming, how likely, and a bar that fills as it nears
-  PX.spr(next.icon, px + 4, py + 27, { frame });
-  PX.text('FORECAST', px + 24, py + 25, { color: PAL.g3 });
-  PX.text(next.label, px + 24, py + 32, { color: next.col });
-
+  // NEXT: icon, a bar that fills as the change gets nearer, the chance and the label
+  PX.spr(next.icon, x, py + 1, { frame });
+  x += 19;
   const chanceCol = chance < 35 ? PAL.wa2 : (chance < 65 ? PAL.ye2 : PAL.or2);
-  const barX = px + 24, barY = py + 42, barW = panelW - 24 - 23;
-  PX.rect(barX, barY, barW, 3, PAL.g5);
-  PX.rect(barX, barY, Math.round(barW * chance / 100), 3, chanceCol);
-  for (let x = barX + 3; x < barX + barW; x += 4) PX.rect(x, barY, 1, 3, PAL.ink);   // segment gaps
-  PX.text(chance + '%', px + panelW - 4, py + 40, { color: chanceCol, align: 'right' });
+  const barY = py + 4;
+  PX.rect(x, barY, barW, 3, PAL.g5);
+  PX.rect(x, barY, Math.round(barW * chance / 100), 3, chanceCol);
+  for (let bx = x + 3; bx < x + barW; bx += 4) PX.rect(bx, barY, 1, 3, PAL.ink);   // segment gaps
+  PX.text(chance + '%', x + nextW, py + 1, { color: chanceCol, align: 'right' });
+  PX.text(next.label, x, py + 8, { color: next.col });
 }
 drawWeatherForecast.pixel = true;

@@ -123,9 +123,11 @@ function birdPalette(kind, na) {
   const key = kind * 10 + step;
   let pal = birdPalCache[key];
   if (!pal) {
-    const k = step / BIRD_NIGHT_STEPS * 0.56;      // the same strength as the night tint
+    // the same colour and strength as the night tint over the garden
+    const night = typeof sceneNightTint === 'function' ? sceneNightTint() : { col: '#161c54', a: 0.56 };
+    const k = step / BIRD_NIGHT_STEPS * night.a;
     const base = BIRD_KINDS[kind];
-    const dim = c => PX.mix(c, '#161c54', k);
+    const dim = c => PX.mix(c, night.col, k);
     pal = { m: dim(base.m), w: dim(base.w), l: dim(base.l), y: dim(base.y), e: dim(PAL.white), o: dim(PAL.ink) };
     birdPalCache[key] = pal;
   }
