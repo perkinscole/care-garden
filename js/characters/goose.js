@@ -46,8 +46,18 @@ class Goose {
     this.honkTimer = 12;
   }
 
-  // Advances the goose's state each frame: picks new states on timer, chases gardener, wanders, or idles.
+  // Runs the state machine for a frame, then moves the legs in time with
+  // the ground actually covered (a flat-out scurry when charging).
   update() {
+    const fromX = this.wx, fromY = this.wy;
+    this.think();
+    const moved = this.wx !== fromX || this.wy !== fromY;
+    if (this.state === 'chase' || this.panicking) { if (moved) this.walkPhase += 0.45; }
+    else this.walkPhase += walkStride(this.wx - fromX, this.wy - fromY, 20);
+  }
+
+  // Advances the goose's state each frame: picks new states on timer, chases gardener, wanders, or idles.
+  think() {
     if (this.honkTimer > 0) this.honkTimer--;
 
     // Storm: forget everything and run around flapping and honking
@@ -67,7 +77,6 @@ class Goose {
         this.wx = constrain(this.wx + (dx / d) * 0.007, 0.02, 0.98);
         this.wy = constrain(this.wy + (dy / d) * 0.007, 0.04, 0.98);
         this.dir = dx > 0 ? 1 : -1;
-        this.walkPhase += 0.5;
       }
       // panicked quacking
       if (frameCount % 50 === 0 && random() < 0.5) {
@@ -120,7 +129,6 @@ class Goose {
         this.wx = constrain(this.wx + sep.nudgeX, 0.02, 0.98);
         this.wy = constrain(this.wy + sep.nudgeY, 0.04, 0.98);
         if (abs(dx) > 0.01) this.dir = dx > 0 ? 1 : -1;
-        this.walkPhase += 0.4;
         // --- THE AGGRESSIVE QUACKING ---
         // A quack every 18 frames (~3 times a second) while running
         if (frameCount % 18 === 0) this.honk();
@@ -135,10 +143,9 @@ class Goose {
 
       if (distSq > 0.0001) {
         let dist = sqrt(distSq);
-        this.wx += (dx / dist) * 0.0025;
-        this.wy += (dy / dist) * 0.0025;
+        this.wx += (dx / dist) * 0.0018;
+        this.wy += (dy / dist) * 0.0018;
         this.dir = dx > 0 ? 1 : -1;
-        this.walkPhase += 0.2;
       } else {
         // When it reaches its destination, force a very short idle before moving again
         this.state = 'idle';

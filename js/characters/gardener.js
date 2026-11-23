@@ -9,6 +9,9 @@
 //   people sprites in js/art/people_art.js (straw sun hat, floral dress).
 // ================================================================
 
+// How far in front of her feet the spout of the tipped can is, in art pixels
+const GARDENER_SPOUT_PX = 10;
+
 // Gardener class handles the gardener's state machine (wander/water/shelter/flee/night),
 // watering can, droplet particles, umbrella display, and goose evasion.
 class Gardener {
@@ -40,25 +43,30 @@ class Gardener {
 
   // Spawns a speech bubble that floats just above her hat (or her umbrella).
   speak(msg) {
-    speechBubbles.push(new SpeechBubble(msg, () => {
-      const p = worldToPx(this.wx, this.wy);
-      return { x: p.x, y: p.y - (this.umbrellaOut ? 41 : 36) };
-    }));
+    speechBubbles.push(new SpeechBubble(msg,
+      () => PEOPLE.bubblePos(this.wx, this.wy, this.look, this.umbrellaOut ? 6 : 0)));
   }
 
-  // Searches flowers array for one within watering range and returns its index, or -1.
+  // Searches the flowers for one within watering range and returns it, or null.
   findNearbyFlower() {
-    for (let i = 0; i < flowers.length; i++) {
-      const f = flowers[i];
+    for (const f of flowers) {
       const dx = f.wx - this.wx;
       const dy = f.wy - this.wy;
-      if (sqrt(dx * dx + dy * dy) < 0.14) return i;
+      if (sqrt(dx * dx + dy * dy) < 0.14) return f;
     }
-    return -1;
+    return null;
+  }
+
+  // Runs her state machine for a frame, then moves her legs in time with
+  // the ground she actually covered.
+  update() {
+    const fromX = this.wx, fromY = this.wy;
+    this.think();
+    this.walkPhase += walkStride(this.wx - fromX, this.wy - fromY, PEOPLE.STRIDE_ADULT);
   }
 
   // Advances the gardener's state each frame: rain/night checks, flee logic, watering, and movement.
-  update() {
+  think() {
     const isRaining = weatherState === 'rainy' || weatherState === 'stormy';
     const isNightTime = nightAmount() > 0.4;
     if (this.fade < 1) this.fade = min(1, this.fade + 0.05);
@@ -71,8 +79,8 @@ class Gardener {
       this.waterTarget = null;
       this.droplets = [];
       this.state = 'goInside';
-      this.twx = 0.50;
-      this.twy = 0.01;  // walk off toward school
+      this.entering = false;
+      this.doorWx = undefined;   // PEOPLE.goIn picks the nearer pair of doors
       this.speak("Time to head in. Goodnight, garden!");
     }
 
@@ -80,8 +88,9 @@ class Gardener {
     if (!isNightTime && this.goingInside) {
       this.goingInside = false;
       this.state = 'wander';
-      this.wx = 0.50;
-      this.wy = 0.05;
+      this.entering = false;
+      this.wx = PEOPLE.doorX();
+      this.wy = PEOPLE.DOOR_WY + 0.008;
       this.fade = 0;
       this.twx = random(0.1, 0.9);
       this.twy = random(0.2, 0.8);
@@ -97,9 +106,9 @@ class Gardener {
       this.state = 'shelter';
       this.waterTarget = null;
       this.droplets = [];
-      // head to school sidewalk
-      this.twx = 0.48 + random(-0.04, 0.04);
-      this.twy = 0.16;
+      // head for the sidewalk under the entrance canopy, beside the doors
+      this.twx = 0.5 + (this.wx < 0.5 ? -1 : 1) * random(0.055, 0.075);
+      this.twy = 0.065;
       this.speak("Oh dear, rain! My flowers!");
     }
 
@@ -132,7 +141,6 @@ class Gardener {
         this.wy = constrain(this.wy, 0.1, 0.95);
         this.dir = dx > 0 ? 1 : -1;
         this.state = 'flee';
-        this.walkPhase += 0.35;   // quick little steps
         this.waterTarget = null;
         this.pourAngle = 0;
 
@@ -188,37 +196,49 @@ class Gardener {
         this.wx = constrain(this.wx + sep.nudgeX, 0.02, 0.98);
         this.wy = constrain(this.wy + sep.nudgeY, 0.04, 0.98);
         this.dir = dx > 0 ? 1 : -1;
-        this.walkPhase += 0.15;
 
         if (frameCount % 60 === 0 && random() < 0.5) {
-          const fi = this.findNearbyFlower();
-          if (fi >= 0) {
-            this.waterTarget = fi;
+          const f = this.findNearbyFlower();
+          if (f) {
+            this.waterTarget = f;
+            // stay on the side of the flower she is already on
+            this.waterSide = f.wx >= this.wx ? 1 : -1;
             this.state = 'approach';
           }
         }
       }
 
     } else if (this.state === 'approach') {
-      if (this.waterTarget === null || this.waterTarget >= flowers.length) {
+      const f = this.waterTarget;
+      // it may have been picked or eaten on her way over
+      if (!f || !flowers.includes(f)) {
+        this.waterTarget = null;
         this.state = 'wander'; return;
       }
-      const f = flowers[this.waterTarget];
-      const dx = f.wx - this.wx;
-      const dy = f.wy - this.wy;
+      // Stand beside the flower so the spout of the tipped can is over the
+      // foot of its stem, and a touch nearer the front so she is drawn
+      // in front of it.
+      const tx = constrain(f.wx - this.waterSide * GARDENER_SPOUT_PX / PX.W, 0.02, 0.98);
+      const ty = constrain(f.wy + 0.006, 0.04, 0.99);
+      const dx = tx - this.wx;
+      const dy = ty - this.wy;
       const d = sqrt(dx * dx + dy * dy);
-      this.dir = dx > 0 ? 1 : -1;
-      if (d < 0.035) {
+      if (d < 0.002) {
+        this.dir = this.waterSide;
         this.state = 'water';
         this.waterTimer = 90;
         this.pourAngle = 0;
       } else {
-        this.wx += (dx / d) * this.speed;
-        this.wy += (dy / d) * this.speed;
-        const sep = getSeparation(this.wx, this.wy, 'gardener');
-        this.wx = constrain(this.wx + sep.nudgeX, 0.02, 0.98);
-        this.wy = constrain(this.wy + sep.nudgeY, 0.04, 0.98);
-        this.walkPhase += 0.15;
+        const st = min(this.speed, d);
+        this.wx += (dx / d) * st;
+        this.wy += (dy / d) * st;
+        if (abs(dx) * PX.W > 1) this.dir = dx > 0 ? 1 : -1;
+        // other characters only push her aside while she is still on her way
+        if (d > 0.04) {
+          const sep = getSeparation(this.wx, this.wy, 'gardener');
+          this.wx = constrain(this.wx + sep.nudgeX, 0.02, 0.98);
+          this.wy = constrain(this.wy + sep.nudgeY, 0.04, 0.98);
+        }
       }
 
     } else if (this.state === 'water') {
@@ -227,28 +247,26 @@ class Gardener {
       this.pourAngle = lerp(this.pourAngle, -1.1, 0.08);
 
       // boost the flower
-      if (this.waterTarget !== null && this.waterTarget < flowers.length) {
-        flowers[this.waterTarget].targetSize = min(
-          flowers[this.waterTarget].targetSize + 0.002,
-          flowers[this.waterTarget].restSize * 1.6
-        );
-      }
+      const f = this.waterTarget;
+      const stillThere = f && flowers.includes(f);
+      if (stillThere) f.targetSize = min(f.targetSize + 0.002, f.restSize * 1.6);
 
       // once the can has tipped, water falls from the end of the spout
+      // onto the foot of the flower
       if (this.pourAngle < -0.5 && frameCount % 3 === 0) {
         const p = worldToPx(this.wx, this.wy);
-        const spout = 10 + floor(random(2));   // art pixels in front of her
+        const spout = GARDENER_SPOUT_PX + floor(random(2));   // art pixels in front of her
         this.droplets.push({
           x: this.dir > 0 ? p.x + spout : p.x - 1 - spout,
           y: p.y - 9,
-          vx: this.dir * random(0, 0.12),
+          vx: this.dir * random(0, 0.08),
           vy: random(0.1, 0.3),
           life: 40,
-          ground: p.y + 1,
+          ground: p.y,
         });
       }
 
-      if (this.waterTimer <= 0) {
+      if (this.waterTimer <= 0 || !stillThere) {
         this.pourAngle = 0;
         this.waterTarget = null;
         this.state = 'idle';
@@ -262,13 +280,12 @@ class Gardener {
       const dy = this.twy - this.wy;
       const d = sqrt(dx * dx + dy * dy);
       this.dir = dx > 0 ? 1 : -1;
-      if (d < 0.03) {
+      if (d < 0.01) {
         this.state = 'sheltering';
         this.walkPhase = 0;
       } else {
         this.wx += (dx / d) * this.speed * 1.8;
         this.wy += (dy / d) * this.speed * 1.8;
-        this.walkPhase += 0.2;
       }
 
     } else if (this.state === 'sheltering') {
@@ -277,18 +294,10 @@ class Gardener {
       // just stand and wait — rain check at top exits this
 
     } else if (this.state === 'goInside') {
-      const dx = this.twx - this.wx;
-      const dy = this.twy - this.wy;
-      const d = sqrt(dx * dx + dy * dy);
-      this.dir = dx > 0 ? 1 : -1;
-      if (d < 0.03 || this.wy < 0.03) {
-        // Through the doors: she waits inside for dawn
+      // along the sidewalk to the doors and through them: she waits inside for dawn
+      if (PEOPLE.goIn(this, this.speed * 1.5)) {
         this.state = 'inside';
         this.walkPhase = 0;
-      } else {
-        this.wx += (dx / d) * this.speed * 1.5;
-        this.wy += (dy / d) * this.speed * 1.5;
-        this.walkPhase += 0.15;
       }
 
     } else if (this.state === 'idle') {
@@ -305,7 +314,8 @@ class Gardener {
     const L = this.look, dir = this.dir;
     const s = this.state;
     const walking = (s === 'wander' || s === 'approach' || s === 'flee' || s === 'shelter' || s === 'goInside');
-    const leg = walking ? PEOPLE.walkFrame(this.walkPhase) : 'stand';
+    let leg = walking ? PEOPLE.walkFrame(this.walkPhase) : 'stand';
+    if (s === 'goInside' && this.entering) leg = PEOPLE.backFrame(this.walkPhase);   // seen from behind
 
     // Worried and shouting when the goose is after her, glum in the rain
     let face = s === 'flee' ? 'open' : s === 'sheltering' ? 'flat' : 'smile';
@@ -313,7 +323,7 @@ class Gardener {
 
     // She fades as she walks through the school doors at night, and back in at dawn
     let alpha = this.fade;
-    if (s === 'goInside') alpha = min(alpha, constrain((this.wy - 0.03) / 0.06, 0, 1));
+    if (s === 'goInside') alpha = min(alpha, PEOPLE.doorAlpha(this));
     if (alpha <= 0.02) return;
 
     const c = PX.c, prevAlpha = c.globalAlpha;
@@ -335,7 +345,10 @@ class Gardener {
       // Watering can hanging from her hand, tipped forward while she waters
       PEOPLE.draw(x, y, L, dir, leg, 'hold', face);
       const pouring = s === 'water' && this.pourAngle < -0.5;
-      PEOPLE._spr('gardenerCan', x + dir * 4, handY + 2, pouring ? 'pour' : 'carry', dir < 0, null);
+      // (from behind, going in at the doors, the can is hidden in front of her)
+      if (!(s === 'goInside' && this.entering)) {
+        PEOPLE._spr('gardenerCan', x + dir * 4, handY + 2, pouring ? 'pour' : 'carry', dir < 0, null);
+      }
     }
     c.globalAlpha = prevAlpha;
 

@@ -97,7 +97,7 @@ class Teacher {
     this.departing = departing || false;
     this.fromLeft = random() < 0.5;
     this.dir = this.fromLeft ? 1 : -1;
-    this.speed = random(0.0025, 0.004);
+    this.speed = random(0.002, 0.003);
     this.walkPhase = random(TWO_PI);
     this.done = false;
     this.spoken = false;
@@ -111,11 +111,12 @@ class Teacher {
     this.carry = r < 0.3 ? 'bag' : r < 0.55 ? 'coffee' : null;
     this.seed = floor(random(1000));
     this.fade = 1;
+    this.entering = false;   // true for the last steps in through the doors
 
     if (this.departing) {
       // Start at school door, walk outward
-      this.wx = 0.5 + random(-0.05, 0.05);
-      this.wy = random(0.05, 0.15);
+      this.wx = PEOPLE.doorX();
+      this.wy = PEOPLE.DOOR_WY + 0.008;
       this.twx = this.fromLeft ? -0.08 : 1.08;
       this.twy = random(0.3, 0.7);
       this.dir = this.twx < 0.5 ? -1 : 1;
@@ -124,8 +125,9 @@ class Teacher {
       // Start off-screen, walk toward school
       this.wx = this.fromLeft ? -0.08 : 1.08;
       this.wy = random(0.3, 0.7);
-      this.twx = 0.5 + random(-0.05, 0.05);
-      this.twy = random(0.03, 0.08);
+      this.twx = PEOPLE.doorX(this.wx);
+      this.twy = PEOPLE.DOOR_FRONT_WY;
+      this.doorWx = this.twx;
     }
   }
 
@@ -136,15 +138,19 @@ class Teacher {
     const dx = this.twx - this.wx;
     const dy = this.twy - this.wy;
     const dist = sqrt(dx * dx + dy * dy);
+    const fromX = this.wx, fromY = this.wy;
 
-    if (dist > 0.02) {
+    if (!this.departing) {
+      // along the sidewalk to the doors, then in
+      if (PEOPLE.goIn(this, this.speed)) this.done = true;
+    } else if (dist > 0.02) {
       this.wx += (dx / dist) * this.speed;
       this.wy += (dy / dist) * this.speed;
-      this.walkPhase += 0.18;
       this.dir = dx > 0 ? 1 : -1;
     } else {
       this.done = true;
     }
+    this.walkPhase += walkStride(this.wx - fromX, this.wy - fromY, PEOPLE.STRIDE_ADULT);
 
     // Speak once: arrivals as they near the school, departures a moment
     // after stepping out (while they are still on screen)
@@ -154,10 +160,8 @@ class Teacher {
       if (random() < 0.5) {
         const lines = this.departing ? TEACHER_GOODBYES : TEACHER_GREETINGS;
         const self = this;
-        speechBubbles.push(new SpeechBubble(lines[floor(random(lines.length))], function() {
-          const p = worldToPx(self.wx, self.wy);
-          return { x: p.x, y: p.y - 33 };
-        }));
+        speechBubbles.push(new SpeechBubble(lines[floor(random(lines.length))],
+          () => PEOPLE.bubblePos(self.wx, self.wy, self.look)));
       }
     }
   }
@@ -165,13 +169,18 @@ class Teacher {
   // Draws the teacher walking; arrivals fade as they go in through the doors
   draw() {
     const { x, y } = worldToPx(this.wx, this.wy);
-    let alpha = this.fade;
-    if (!this.departing) alpha = min(alpha, PEOPLE.doorFade(dist(this.wx, this.wy, this.twx, this.twy)));
+    const alpha = min(this.fade, PEOPLE.doorAlpha(this));
     if (alpha <= 0.02) return;
     const c = PX.c, prevAlpha = c.globalAlpha;
     c.globalAlpha = prevAlpha * alpha;
-    drawTeacherFigure(x, y, this.look, this.dir, PEOPLE.walkFrame(this.walkPhase), this.carry,
-                      PEOPLE.face(PX.tick, this.seed, 'smile'));
+    if (this.entering) {
+      // seen from behind, stepping in through the doors
+      PX.shadow(x, y, 12);
+      PEOPLE.draw(x, y, this.look, this.dir, PEOPLE.backFrame(this.walkPhase));
+    } else {
+      drawTeacherFigure(x, y, this.look, this.dir, PEOPLE.walkFrame(this.walkPhase), this.carry,
+                        PEOPLE.face(PX.tick, this.seed, 'smile'));
+    }
     c.globalAlpha = prevAlpha;
   }
 }

@@ -28,22 +28,44 @@ function pplSwap(rows, a, b) {
   return rows.map(r => r.replace(new RegExp('[' + a + b + ']', 'g'), ch => (ch === a ? b : a)));
 }
 
+// Lifts one foot in a back view: the bottom rows of the left or right half
+// of the frame move up a pixel, so the two back frames make a little march.
+function pplLiftLeg(rows, left) {
+  const out = rows.slice(), n = rows.length;
+  const half = r => (left ? r.slice(0, 7) : r.slice(7));
+  const join = (r, h) => (left ? h + r.slice(7) : r.slice(0, 7) + h);
+  out[n - 3] = join(rows[n - 3], half(rows[n - 2]));
+  out[n - 2] = join(rows[n - 2], half(rows[n - 1]));
+  out[n - 1] = join(rows[n - 1], '.......');
+  return out;
+}
+
 // torso: rows of the upper body. legs: { stand, contact, pass } rows.
 // extraSwap: more letter pairs to swap for the second half of the walk.
-function pplBody(torso, legs, extraSwap) {
+// back: { torso, shoes } for the view from behind (walking in at the school
+// doors): its own torso with an arm down each side, on the standing legs
+// with a pair of matching shoes. Gives frames back, b0 and b1.
+function pplBody(torso, legs, extraSwap, back) {
   let contact2 = pplSwap(legs.contact, 'p', 'P');
   let pass2 = pplSwap(legs.pass, 'p', 'P');
   for (const pair of (extraSwap || [])) {
     contact2 = pplSwap(contact2, pair[0], pair[1]);
     pass2 = pplSwap(pass2, pair[0], pair[1]);
   }
-  return {
+  const frames = {
     stand: [...torso, ...legs.stand],
     w0: [PPL_BLANK, ...torso, ...legs.contact],   // near leg forward
     w1: [...torso, ...legs.pass],                 // near leg planted, far leg passing
     w2: [PPL_BLANK, ...torso, ...contact2],       // far leg forward
     w3: [...torso, ...pass2],                     // far leg planted
   };
+  if (back) {
+    const rows = [...back.torso, ...legs.stand.slice(0, legs.stand.length - back.shoes.length), ...back.shoes];
+    frames.back = rows;
+    frames.b0 = pplLiftLeg(rows, true);
+    frames.b1 = pplLiftLeg(rows, false);
+  }
+  return frames;
 }
 
 // Default colours, so the sprite viewer shows something sensible.
@@ -114,6 +136,20 @@ PX.define('adultBody', {
       '.......oxxxo..',
       '.......ooooo..',
     ],
+  }, null, {
+    torso: [
+      '....ooooooo...',
+      '...oSllsssSo..',
+      '...oSlssssSo..',
+      '...oSsssssSo..',
+      '...oSsssssSo..',
+      '...oSsssssSo..',
+      '...oSsssssSo..',
+      '...ofsssssfo..',
+      '...ofsssssfo..',
+      '...okbbbbbko..',
+    ],
+    shoes: ['....oxxoxxo...', '....ooooooo...'],
   }),
 });
 
@@ -171,22 +207,38 @@ PX.define('adultSkirtBody', {
       '.......oxxo...',
       '.......oooo...',
     ],
-  }, ['gG']),
+  }, ['gG'], {
+    torso: [
+      '....ooooooo...',
+      '...oSlsssSSo..',
+      '...oSlsssSSo..',
+      '...oSssssSSo..',
+      '...oSssssSSo..',
+      '...oSssssSSo..',
+      '...oSssssSSo..',
+      '...ofssssSfo..',
+      '...ofssssSfo..',
+      '...okssssSko..',
+    ],
+    shoes: ['.....oxoxxo...', '.....oooooo...'],
+  }),
 });
 
 // ── Student ───────────────────────────────────────────
 // 14 rows: 6 of T-shirt, 6 of leg, 2 of shoe. d is a chest stripe.
 // Recolour g/G to skin for shorts. `crouch` is the flower-picking squat.
-PX.define('kidBody', {
-  pal: PPL_PAL,
-  frames: Object.assign(pplBody([
+// Students come in three heights. `grow` is -1 (a row shorter in the leg),
+// 0, or 1 (a row longer in both the body and the leg).
+function pplKidFrames(grow) {
+  const torso = [
     '.....ooooo....',
     '....olsssSo...',
     '....olsssSo...',
     '....odddddo...',
     '....osssSSo...',
     '....osssSSo...',
-  ], {
+  ];
+  const legs = {
     stand: [
       '....opppPPo...',
       '....oppoPPo...',
@@ -216,25 +268,48 @@ PX.define('kidBody', {
       '.......oxxxo..',
       '.......ooooo..',
     ],
-  }, ['gG']), {
-    crouch: [
-      PPL_BLANK,
-      PPL_BLANK,
-      PPL_BLANK,
-      PPL_BLANK,
-      '.....ooooo....',
-      '....olsssSo...',
-      '....olsssSo...',
-      '....odddddo...',
-      '....osssSSoo..',
-      '....opppppPPo.',
-      '....oppppPPPo.',
-      '....ooooogGGo.',
-      '....oxxxoxxxo.',
-      '....ooooooooo.',
-    ],
-  }),
-});
+  };
+  const backTorso = [
+    '....ooooooo...',
+    '...oSlsssSSo..',
+    '...oSlsssSSo..',
+    '...ofdddddfo..',
+    '...ofsssSSfo..',
+    '...oksssSSko..',
+  ];
+  if (grow > 0) {
+    torso.splice(4, 0, torso[4]);
+    backTorso.splice(4, 0, backTorso[4]);
+    legs.stand.splice(3, 0, legs.stand[3]);
+    legs.contact.splice(3, 0, legs.contact[3]);
+    legs.pass.splice(2, 0, legs.pass[2]);
+  } else if (grow < 0) {
+    legs.stand.splice(3, 1);
+    legs.contact.splice(3, 1);
+    legs.pass.splice(2, 1);
+  }
+  const frames = pplBody(torso, legs, ['gG'], {
+    torso: backTorso,
+    shoes: ['....oxxoxxo...', '....ooooooo...'],
+  });
+  // The crouch is the same for every height: it is 10 rows tall
+  frames.crouch = [
+    '.....ooooo....',
+    '....olsssSo...',
+    '....olsssSo...',
+    '....odddddo...',
+    '....osssSSoo..',
+    '....opppppPPo.',
+    '....oppppPPPo.',
+    '....ooooogGGo.',
+    '....oxxxoxxxo.',
+    '....ooooooooo.',
+  ];
+  return frames;
+}
+PX.define('kidBody', { pal: PPL_PAL, frames: pplKidFrames(0) });
+PX.define('kidBodySmall', { pal: PPL_PAL, frames: pplKidFrames(-1) });
+PX.define('kidBodyTall', { pal: PPL_PAL, frames: pplKidFrames(1) });
 
 // ── The Gardener's floral dress ───────────────────────
 // d/D bodice, a/A skirt, and r, y, v are the little flowers printed on it.
@@ -538,6 +613,18 @@ PX.define('peopleHead', {
       '.oKkkkkko.',
       '..oooooo..',
     ],
+    // seen from behind
+    back: [
+      '..oooooo..',
+      '.okkkkkko.',
+      'okkkkkkkko',
+      'okkkkkkkko',
+      'okkkkkkkko',
+      'okkkkkkkKo',
+      'okkkkkkKKo',
+      '.oKKKKKKo.',
+      '..oooooo..',
+    ],
   },
 });
 
@@ -693,6 +780,97 @@ PX.define('peopleHair', {
       '................',
       '................',
     ],
+    // From behind: a few shapes cover every hairstyle (see PEOPLE.BACK_HAIR).
+    backShort: [
+      '................',
+      '.....oooooo.....',
+      '....ohhhhhho....',
+      '...ohhihhhhho...',
+      '...ohihhhhhho...',
+      '...ohhhhhhhHo...',
+      '...ohhhhhhhHo...',
+      '...oHhhhhhHHo...',
+      '....oHHHHHHo....',
+      '................',
+      '................',
+      '................',
+      '................',
+    ],
+    backBob: [
+      '................',
+      '.....oooooo.....',
+      '....ohhhhhho....',
+      '...ohhihhhhho...',
+      '..ohhihhhhhhho..',
+      '..ohhhhhhhhhHo..',
+      '..ohhhhhhhhhHo..',
+      '..ohhhhhhhhhHo..',
+      '..ohhhhhhhhHHo..',
+      '..oHhhhhhhHHHo..',
+      '...oooooooooo...',
+      '................',
+      '................',
+    ],
+    backLong: [
+      '................',
+      '.....oooooo.....',
+      '....ohhhhhho....',
+      '...ohhihhhhho...',
+      '..ohhihhhhhhho..',
+      '..ohhhhhhhhhHo..',
+      '..ohhhhhhhhhHo..',
+      '..ohhhhhhhhhHo..',
+      '..ohhhhhhhhhHo..',
+      '..ohhhhhhhhHHo..',
+      '..ohhhhhhhhHHo..',
+      '..oHHhhhhhHHHo..',
+      '...oooooooooo...',
+    ],
+    backPony: [
+      '................',
+      '.....oooooo.....',
+      '....ohhhhhho....',
+      '...ohhihhhhho...',
+      '...ohihhhhhho...',
+      '...ohhhoohhHo...',
+      '...ohhohhohHo...',
+      '...oHhohhoHHo...',
+      '....oHohhoHo....',
+      '......ohHo......',
+      '......ohHo......',
+      '.......oo.......',
+      '................',
+    ],
+    backBun: [
+      '......oooo......',
+      '.....ohhhho.....',
+      '....ohhHHhho....',
+      '...ohhihhhhho...',
+      '...ohihhhhhho...',
+      '...ohhhhhhhHo...',
+      '...ohhhhhhhHo...',
+      '...oHhhhhhHHo...',
+      '....oHHHHHHo....',
+      '................',
+      '................',
+      '................',
+      '................',
+    ],
+    backFringe: [
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '...ohhhhhhhHo...',
+      '...ohhhhhhhHo...',
+      '...oHhhhhhHHo...',
+      '....oHHHHHHo....',
+      '................',
+      '................',
+      '................',
+      '................',
+    ],
     // bald on top with hair round the back and sides
     fringe: [
       '................',
@@ -727,6 +905,22 @@ PX.define('peopleHeadwear', {
       '...oaaaaaaaao...',
       '...oAAAAAAAAAAAo',
       '............ooo.',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+    ],
+    // the same cap from behind: no peak
+    capBack: [
+      '................',
+      '.....oooooo.....',
+      '....oaaaaaao....',
+      '...oaaaaaaaAo...',
+      '...oAAAAAAAAo...',
+      '................',
       '................',
       '................',
       '................',
@@ -814,6 +1008,20 @@ PX.define('kidBackpack', {
       '.........',
     ],
   },
+});
+// The same backpack seen square-on, on the back of a student walking away.
+PX.define('kidBackpackBack', {
+  pal: { o: PAL.ink, a: PAL.re2, A: PAL.re3, z: PAL.ye2 },
+  anchor: [4, 0],
+  frames: [[
+    '.ooooooo.',
+    'oaaaaaaAo',
+    'oaaaaaaAo',
+    'oazzzzaAo',
+    'oaaaaaaAo',
+    'oAAAAAAAo',
+    '.ooooooo.',
+  ]],
 });
 
 // The Gardener's watering can. The anchor is the top of the handle, where
@@ -904,8 +1112,72 @@ PX.define('teacherCup', {
   });
 })();
 
+// ── Walking pace ──────────────────────────────────────
+// How far to advance a walk cycle (in radians; a full cycle is two steps)
+// for a move of (dwx, dwy) world units, so that feet plant on the grass
+// instead of sliding over it. cyclePx is how many art pixels the character
+// covers in one whole cycle. Moving up or down the lawn covers few pixels,
+// so there is a slowest pace to keep the legs going.
+function walkStride(dwx, dwy, cyclePx) {
+  const d = Math.hypot(dwx * PX.W, dwy * (PX.H - PX.HOR));
+  if (d < 0.02) return 0;
+  return Math.max(0.1, Math.min(0.55, Math.PI * 2 * d / cyclePx));
+}
+
 // ── PEOPLE: looks and the layered drawing ─────────────
 const PEOPLE = {
+  // Art pixels covered in one walk cycle (two steps)
+  STRIDE_KID: 30, STRIDE_ADULT: 38,
+
+  // The main entrance. People going inside walk along the sidewalk to a
+  // spot in front of one of the two pairs of doors (DOOR_FRONT_WY), turn
+  // their backs and step in to the threshold (DOOR_WY), fading as they go.
+  DOOR_WY: 0.024,
+  DOOR_FRONT_WY: 0.07,
+  // World x of the middle of a pair of doors: the pair on the side the
+  // person is coming from (or either, when no position is given).
+  doorX(fromWx) {
+    const side = fromWx === undefined ? (Math.random() < 0.5 ? -1 : 1) : (fromWx < 0.5 ? -1 : 1);
+    return 0.5 + side * (9 + Math.floor(Math.random() * 6)) / PX.W;
+  },
+  // Moves a character (anything with wx, wy, dir) one step on its way in at
+  // the doors. Sets ch.entering once it has turned to walk in (draw it with
+  // the 'b0'/'b1' back frames then). Returns true when it is inside.
+  goIn(ch, speed) {
+    if (ch.doorWx === undefined) ch.doorWx = this.doorX(ch.wx);
+    if (!ch.entering) {
+      const dx = ch.doorWx - ch.wx, dy = this.DOOR_FRONT_WY - ch.wy;
+      const d = Math.hypot(dx, dy);
+      if (Math.hypot(dx * PX.W, dy * (PX.H - PX.HOR)) < 1.5) {
+        ch.entering = true;
+        ch.wx = ch.doorWx;
+      } else {
+        const st = Math.min(speed, d);
+        ch.wx += dx / d * st;
+        ch.wy += dy / d * st;
+        if (Math.abs(dx) * PX.W > 1) ch.dir = dx > 0 ? 1 : -1;
+      }
+      return false;
+    }
+    ch.wy -= Math.max(0.0012, speed * 0.6);
+    return ch.wy <= this.DOOR_WY;
+  },
+  // Opacity of someone on their way in: solid until the last few steps.
+  doorAlpha(ch) {
+    if (!ch.entering) return 1;
+    return Math.max(0, Math.min(1, (ch.wy - this.DOOR_WY) / 0.03));
+  },
+  // Body frame for someone walking in at the doors, from their walk phase.
+  backFrame(phase) {
+    return Math.floor(phase / Math.PI) % 2 === 0 ? 'b0' : 'b1';
+  },
+  // Which back-of-the-head shape goes with each hairstyle
+  BACK_HAIR: {
+    short: 'backShort', buzz: 'backShort', neat: 'backShort', swoop: 'backShort',
+    curly: 'backBob', bob: 'backBob', long: 'backLong', pony: 'backPony',
+    bun: 'backBun', fringe: 'backFringe',
+  },
+
   // Skin tones, lightest first. k skin, K its shadow, m the mouth, w/e the eyes.
   SKIN: [PAL.sn1, PAL.sn2, PAL.sn3, PAL.sn4, PAL.sn5, PAL.sn6].map((k, i, all) => ({
     k,
@@ -971,6 +1243,7 @@ const PEOPLE = {
   //   sleeves  'long' | 'short'             collar, tie, belt, stripe, shoes: colours
   //   beard    index into HAIR              cap      cloth for a baseball cap
   //   pack     cloth for a backpack         sunHat   true for the straw hat
+  //   height   students only: -1 short, 0, 1 tall
   // The result holds ready-made palettes, so nothing is allocated per frame.
   look(spec) {
     const kind = spec.kind || 'adult';
@@ -983,6 +1256,7 @@ const PEOPLE = {
       body: { adult: 'adultBody', skirt: 'adultSkirtBody', kid: 'kidBody', gardener: 'gardenerBody' }[kind],
       arm: kind === 'kid' ? 'kidArm' : 'adultArm',
       h: kind === 'kid' ? 14 : 21,          // rows from the shoulders to the ground
+      tall: kind === 'kid' ? 23 : 30,       // rows from the top of the head to the ground
       farDx: kind === 'adult' ? 5 : 4,      // how far along the far arm's shoulder is
       skinPal: skin,
       hair: spec.hair || null,
@@ -996,7 +1270,13 @@ const PEOPLE = {
       bodyPal: null,
       armPal: null,
     };
+    if (kind === 'kid' && spec.height) {
+      L.body = spec.height > 0 ? 'kidBodyTall' : 'kidBodySmall';
+      L.h += spec.height > 0 ? 2 : -1;
+      L.tall += spec.height > 0 ? 2 : -1;
+    }
     if (kind === 'gardener') {
+      L.tall = 33;                          // her hat adds a little
       L.bodyPal = { k: skin.k, K: skin.K };
       L.armPal = { s: PAL.pi2, S: PAL.pi3, l: PAL.pi1, f: skin.k, k: skin.k };
     } else {
@@ -1005,6 +1285,8 @@ const PEOPLE = {
         c: spec.collar || top.l, t: spec.tie || top.m, d: spec.stripe || top.m,
         b: spec.belt || bottom.d, p: bottom.m, P: bottom.d, g: legs.m, G: legs.d,
         x: spec.shoes || PAL.wo3,
+        // the back view has the arms painted in: f forearm, k hand
+        f: spec.sleeves === 'short' ? skin.k : top.m, k: skin.k,
       };
       L.armPal = { s: top.m, S: top.d, l: top.l, f: spec.sleeves === 'short' ? skin.k : top.m, k: skin.k };
     }
@@ -1014,7 +1296,15 @@ const PEOPLE = {
   // Art y of the top of the shoulders for a body frame (it dips on the
   // contact frames of the walk and drops for a crouch).
   top(y, L, leg) {
-    return y - L.h + (leg === 'w0' || leg === 'w2' ? 1 : 0) + (leg === 'crouch' ? 4 : 0);
+    if (leg === 'crouch') return y - 10;
+    return y - L.h + (leg === 'w0' || leg === 'w2' ? 1 : 0);
+  },
+
+  // Art-pixel point just above someone's head, for speech bubbles.
+  // extra lifts it further (an umbrella, say).
+  bubblePos(wx, wy, L, extra) {
+    const p = worldToPx(wx, wy);
+    return { x: p.x, y: p.y - L.tall - 2 - (extra || 0) };
   },
 
   // Walk frame name from a walk phase in radians (one cycle = two steps).
@@ -1043,7 +1333,9 @@ const PEOPLE = {
 
   // Draws a person standing on art pixel (x, y).
   //   dir   1 facing right, -1 facing left
-  //   leg   body frame: 'stand', 'w0'..'w3', or 'crouch' (students only)
+  //   leg   body frame: 'stand', 'w0'..'w3', 'crouch' (students only), or
+  //         'back', 'b0', 'b1' for the view from behind (arm and face are
+  //         then ignored)
   //   arm   'walk' to swing with the legs, or an arm frame name
   //   face  'smile' | 'blink' | 'open' | 'flat'
   //   alpha 0..1 for fading in and out at the school door
@@ -1056,6 +1348,11 @@ const PEOPLE = {
     x = Math.round(x); y = Math.round(y);
     const flip = dir < 0;
     const top = this.top(y, L, leg);
+    if (leg === 'back' || leg === 'b0' || leg === 'b1') {
+      this._drawBack(x, y, L, leg, top);
+      c.globalAlpha = prevAlpha;
+      return;
+    }
 
     // Arms swing opposite to the legs. The far arm is drawn first so it
     // only shows where it swings out past the body.
@@ -1083,16 +1380,30 @@ const PEOPLE = {
     c.globalAlpha = prevAlpha;
   },
 
+  // The view from behind: no face, hair right across the head, an arm at
+  // each side (painted into the body frame) and the backpack square-on.
+  _drawBack(x, y, L, leg, top) {
+    if (L.kind === 'gardener') {
+      // her dress looks much the same from behind
+      this._spr(L.body, x, y, 'stand', false, L.bodyPal);
+      this._spr(L.arm, x, top, 'down', false, L.armPal);
+      this._spr(L.arm, x, top, 'down', true, L.armPal);
+    } else {
+      this._spr(L.body, x, y, leg, false, L.bodyPal);
+    }
+    if (L.packPal) this._spr('kidBackpackBack', x, top + 1, 0, false, L.packPal);
+    const hy = top + 1;
+    this._spr('peopleHead', x, hy, 'back', false, L.skinPal);
+    if (L.bald && !L.hair) this._spr('peopleHeadwear', x, hy, 'shine', false, L.shinePal);
+    if (L.hair) this._spr('peopleHair', x, hy, this.BACK_HAIR[L.hair] || 'backShort', false, L.hairPal);
+    if (L.capPal) this._spr('peopleHeadwear', x, hy, 'capBack', false, L.capPal);
+    if (L.sunHat) this._spr('gardenerHat', x, hy, 0, false, null);
+  },
+
   // Everyone blinks now and then. Returns 'blink' for a few frames out of
   // every few seconds (seed staggers people), otherwise the face given.
   face(tick, seed, base) {
     return (tick + seed * 37) % 190 < 6 ? 'blink' : (base || 'smile');
-  },
-
-  // Opacity for someone walking through the school doors: solid until
-  // they are close to the door, gone as they reach it.
-  doorFade(dist) {
-    return Math.max(0, Math.min(1, (dist - 0.02) / 0.05));
   },
 
   // A stand-in hand-held flower, used until flowers.js provides

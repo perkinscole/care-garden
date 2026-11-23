@@ -28,7 +28,7 @@ class MrConant {
     this.wx    = this.fromLeft ? -0.05 : 1.05;
     this.wy    = random(0.55, 0.85);
     this.dir   = this.fromLeft ? 1 : -1;
-    this.speed = 0.003;
+    this.speed = 0.0022;
     this.walkPhase = 0;
     this.state = 'enter';
     this.idleTimer = 0;
@@ -40,11 +40,17 @@ class MrConant {
 
   // Advances through enter, speak, and exit states
   update() {
+    const fromX = this.wx;
+    this.step();
+    this.walkPhase += walkStride(this.wx - fromX, 0, PEOPLE.STRIDE_ADULT);
+  }
+
+  // One frame of the enter, speak, exit state machine.
+  step() {
     if (this.state === 'enter') {
       const dx = this.targetX - this.wx;
       this.dir = dx > 0 ? 1 : -1;
       this.wx += this.dir * this.speed;
-      this.walkPhase += 0.18;
 
       if (abs(dx) < 0.03) {
         this.state = 'speak';
@@ -55,10 +61,7 @@ class MrConant {
           this.spoken = true;
           const self = this;
           const phrase = CONANT_PHRASES[floor(random(CONANT_PHRASES.length))];
-          speechBubbles.push(new SpeechBubble(phrase, () => {
-            const p = worldToPx(self.wx, self.wy);
-            return { x: p.x, y: p.y - 33 };
-          }));
+          speechBubbles.push(new SpeechBubble(phrase, () => PEOPLE.bubblePos(self.wx, self.wy, self.look)));
         }
       }
 
@@ -71,7 +74,6 @@ class MrConant {
 
     } else if (this.state === 'exit') {
       this.wx += this.dir * this.speed * 1.2;
-      this.walkPhase += 0.18;
       if (this.wx < -0.1 || this.wx > 1.1) this.done = true;
     }
   }
