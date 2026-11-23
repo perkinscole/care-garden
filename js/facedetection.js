@@ -373,9 +373,3 @@ function drawFaceDecorations(detections) {
   }
 }
 drawFaceDecorations.pixel = true;
-
-// The hats used to be five large PNG photos that had their backgrounds
-// stripped at startup. They are sprites now, so there is nothing to
-// process; sketch.js still checks these two until its hat loading is removed.
-let hatsProcessed = true;
-function processHatImages() {}

@@ -37,10 +37,6 @@ function setup() {
     MODEL_URL: 'https://cdn.jsdelivr.net/gh/ml5js/ml5-data-and-models@face-api/models/faceapi'
   }, faceReady);
 
-  for (let i = 1; i <= 5; i++) {
-    hatImages.push(loadImage('images/hat' + i + '.png'));
-  }
-
   nsfwjs.load().then(function(model) {
     nsfwModel = model;
     nsfwReady = true;
@@ -164,9 +160,6 @@ function draw() {
     try { if (faceapi) faceapi.detect(gotFaces); } catch (e) { /* ignore */ }
     lastFaceUpdate = millis(); // debounce: give it 5s before next kick
   }
-
-  // Pre-process hat images one per frame (avoids freeze when hat time starts)
-  if (!hatsProcessed) processHatImages();
 
   // Advance day/night cycle
   dayNightT += daySpeed;

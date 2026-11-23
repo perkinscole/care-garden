@@ -93,7 +93,6 @@ let nsfwModel = null;
 let nsfwReady = false;
 
 // Hat/decoration overlays drawn on detected faces
-let hatImages = [];
 let decorationsEnabled = true;
 let hatTimeAlpha = 0;
 let wasRaining = false;
