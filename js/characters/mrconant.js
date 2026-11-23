@@ -5,9 +5,9 @@
 // Last Modified: November 22, 2026
 // Description: Mr. Conant, head of the CARE team. A beloved teacher
 //   who walks in occasionally, shares an encouraging phrase, then exits.
-//   Shows up less frequently than Mr. Perkins. Drawn as pixel art from the
-//   shared people sprites in js/art/people_art.js: neat dark hair, light
-//   blue shirt, blue tie (he always wears a tie) and dark slacks.
+//   Shows up less frequently than Mr. Perkins. A 3D box person built by
+//   PEOPLE3 (js/g3_people.js): neat dark hair, light blue shirt, blue tie
+//   (he always wears a tie) and dark slacks.
 // ================================================================
 
 // Mr. Conant's look: dark side-parted hair, light blue shirt, blue tie, dark slacks.
@@ -21,7 +21,7 @@ function conantLook() {
 
 // Mr. Conant — walks in from off-screen, speaks, then walks back out
 class MrConant {
-  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+  static g3 = true;      // drawn as a 3D model (see docs/GARDEN_3D.md)
 
   constructor() {
     this.fromLeft = random() < 0.5;
@@ -78,24 +78,23 @@ class MrConant {
     }
   }
 
-  // Draws Mr. Conant walking, or standing and talking with his hand out.
+  // Poses Mr. Conant walking, or standing turned toward us and talking with his hand out.
   draw() {
-    const { x, y } = worldToPx(this.wx, this.wy);
-    const walking = (this.state === 'enter' || this.state === 'exit');
-    const leg = walking ? PEOPLE.walkFrame(this.walkPhase) : 'stand';
-    // while he talks he gestures: hand out, hand down, hand out
-    let arm = 'walk';
-    if (!walking) arm = PX.anim(2, 24) ? 'hold' : 'down';
-    PX.shadow(x, y, 13);
-    PEOPLE.draw(x, y, this.look, this.dir, leg, arm, PEOPLE.face(PX.tick, 11, 'smile'));
+    const m = PEOPLE3.model(this, this.dir * G3.YAW.right);
+    const moving = PEOPLE3.move(m, this.wx, this.wy, { yaw: this.dir * 0.45 });
+    const side = PEOPLE3.nearSide(m);
+    const talking = this.state === 'speak';
+    PEOPLE3.pose(m, {
+      walk: moving ? this.walkPhase : null, side,
+      arm: talking ? 'talk' : 'walk',                    // he gestures while he talks
+      look: talking ? 0.25 * Math.sin(G3.frame * 0.04) : 0,
+      face: PEOPLE.face(G3.frame, 11, 'smile'),
+    });
   }
 }
 
-// I SPY card: Mr. Conant standing, gesturing as he talks and giving a wave.
-CARD_ART.mrconant = (x, y, tick) => {
-  const L = CARD_ART._conantLook || (CARD_ART._conantLook = conantLook());
-  const t = tick % 300;
-  const arm = t < 80 ? (Math.floor(tick / 9) % 2 ? 'wave1' : 'wave2') : (t > 180 && t < 250 ? 'hold' : 'down');
-  PX.shadow(x, y, 13);
-  PEOPLE.draw(x, y, L, 1, 'stand', arm, PEOPLE.face(tick, 11, 'smile'));
-};
+// I SPY card: Mr. Conant standing, hand out as he talks.
+G3.cardArt('mrconant', () => {
+  const m = PEOPLE3.build(conantLook());
+  return PEOPLE3.pose(m, { side: 'L', arm: 'hold', arm2: 'down', snap: true });
+});

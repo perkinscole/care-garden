@@ -2,700 +2,377 @@
 // File: flowers_art.js
 // Author: Cole Perkins
 // Date Created: November 22, 2026
-// Last Modified: November 22, 2026
-// Description: Pixel art for the flowers. The small fixed pieces (leaves,
-//   sprouts, the dirt mound, sparkles) are PX.define(...) sprites. The
-//   flower heads come in eight types, any petal colour and several sizes,
-//   so they are painted pixel by pixel by the FLOWER_ART painters below
-//   and cached by js/flowers.js. No p5.js functions are used here, so
-//   tools/sprites.html can still load this file on its own.
+// Last Modified: November 23, 2026
+// Description: Block art for the flowers of the 3D garden. Everything
+//   here is a list of little coloured boxes ({ x, y, z, w, h, d, c },
+//   centre and size) that js/flowers.js bakes into one mesh per flower
+//   with G3.merged: the eight kinds of bloom, stems and leaves, the
+//   branches of a group plant, the dirt mound, the sprout, the sparkles
+//   and the tiny hand-held flower. The small 2D hand-held flower for the
+//   dashboard is painted here too. No p5.js or three.js functions are
+//   used at load time, so tools/sprites.html can load this file alone.
 // ================================================================
 
-// ── Small fixed sprites ───────────────────────────────
-// Greens: l = sunlit, m = leaf green, e = dark edge.
-const FLOWER_GREENS = { l: PAL.gr1, m: PAL.gr2, s: PAL.gr3, e: PAL.gr5 };
+// ── Block flowers ─────────────────────────────────────
+// A BLOOM is designed in its own units: the photo is the square from -1
+// to 1 in x and y, facing +z, with its face at z = 0. Round it go a thin
+// dark frame (to FRAME), a backing slab (to BACK) and then the petals,
+// which start at the edge of the backing. Nothing but the photo itself
+// is ever in front of z = 0.06, and nothing reaches inside the frame, so
+// no block can cover a face. js/flowers.js scales the design to blocks
+// (one unit = half the width of the photo) and tips it back a little.
+const FLOWER3 = (() => {
+  const FRAME = 1.09, BACK = 1.22;
 
-// Fresh dirt where a flower was just planted. The three frames crumble
-// away as the mound settles (frame 0 = fresh).
-PX.define('fl_mound', {
-  pal: { b: PAL.wo2, h: PAL.wo1, n: PAL.wo4, d: PAL.wo3 },
-  frames: [
-    [
-      '....bhbb.....',
-      '..bhbbbbdb...',
-      '.bbbbdbbbbhb.',
-      'ndbbbbbbdbbdn',
-      '.nnddnnnddnn.',
-    ],
-    [
-      '.............',
-      '....bhbb.....',
-      '..bhbbdbbb...',
-      '.ndbbbbbdbdn.',
-      '..nnddnnnnn..',
-    ],
-    [
-      '.............',
-      '.............',
-      '.....bb......',
-      '...db.bbd.b..',
-      '..n.dnn.nn...',
-    ],
-  ],
-});
-
-// The first days of a flower: a shoot, then two seed leaves, then a
-// taller seedling. Feet (anchor) at the bottom centre.
-PX.define('fl_sprout', {
-  pal: FLOWER_GREENS,
-  frames: [
-    [
-      '.......',
-      '.......',
-      '.......',
-      '.......',
-      '.......',
-      '..l....',
-      '..mle..',
-      '...le..',
-    ],
-    [
-      '.......',
-      '.......',
-      '.......',
-      '.ll.ll.',
-      'emlelme',
-      '.eeleee',
-      '...le..',
-      '...le..',
-    ],
-    [
-      '.ll.ll.',
-      'lmlelme',
-      'emmlmme',
-      '.eeleee',
-      '...le..',
-      '.llle..',
-      'emmle..',
-      '.eele..',
-    ],
-  ],
-});
-
-// Ordinary leaf, growing up and to the right from the stem. Anchor is the
-// bottom-left pixel, where it joins the stem. Frames: small, large.
-PX.define('fl_leaf', {
-  pal: FLOWER_GREENS,
-  anchor: [0, 6],
-  frames: [
-    [
-      '.........',
-      '.........',
-      '...ee....',
-      '..elle...',
-      '.elme....',
-      'eme......',
-    ],
-    [
-      '....eeee.',
-      '..eelllle',
-      '.ellmmmme',
-      '.elmmmse.',
-      'emmssee..',
-      'eee......',
-    ],
-  ],
-});
-
-// Long blade leaf for tulips and lilies, rising from the base of the stem
-// and leaning right. Frames: short, medium, tall.
-PX.define('fl_blade', {
-  pal: FLOWER_GREENS,
-  anchor: [0, 14],
-  frames: [
-    [
-      '.......',
-      '.......',
-      '.......',
-      '.......',
-      '.......',
-      '.......',
-      '.......',
-      '.......',
-      '...e...',
-      '..ele..',
-      '..lme..',
-      '.lme...',
-      '.lme...',
-      'ee.....',
-    ],
-    [
-      '.......',
-      '.......',
-      '.......',
-      '.......',
-      '....e..',
-      '...ele.',
-      '...lme.',
-      '..lmse.',
-      '..lme..',
-      '.lmse..',
-      '.lme...',
-      '.lme...',
-      'eme....',
-      'ee.....',
-    ],
-    [
-      '......e',
-      '.....le',
-      '....lme',
-      '....lme',
-      '...lmse',
-      '...lme.',
-      '..lmse.',
-      '..lme..',
-      '..lme..',
-      '.lmse..',
-      '.lme...',
-      '.lme...',
-      'eme....',
-      'ee.....',
-    ],
-  ],
-});
-
-// Big heart-shaped sunflower leaf on a short stalk. Anchor at the stalk.
-PX.define('fl_bigleaf', {
-  pal: FLOWER_GREENS,
-  anchor: [0, 6],
-  frames: [
-    [
-      '..........',
-      '..........',
-      '...eee....',
-      '..ellle...',
-      '.elmmse...',
-      'eemsee....',
-      '..ee......',
-    ],
-    [
-      '....eeee..',
-      '..eellllee',
-      '.ellmmmmse',
-      '.elmlmmsse',
-      'eemmmmsse.',
-      '..emsssee.',
-      '...eeee...',
-    ],
-  ],
-});
-
-// Feathery cosmos foliage: a few thin fronds. Anchor bottom-left.
-PX.define('fl_frond', {
-  pal: FLOWER_GREENS,
-  anchor: [0, 6],
-  frames: [
-    [
-      '.....l.',
-      '..l.me.',
-      '..me...',
-      '.me.lll',
-      '.mmme..',
-      'ee.....',
-    ],
-  ],
-});
-
-// Twinkle shown for a moment when a flower first opens.
-PX.define('fl_sparkle', {
-  pal: { w: PAL.white, y: PAL.ye1 },
-  anchor: [2, 3],
-  frames: [
-    [
-      '.....',
-      '.....',
-      '..w..',
-      '.....',
-      '.....',
-    ],
-    [
-      '.....',
-      '..y..',
-      '.ywy.',
-      '..y..',
-      '.....',
-    ],
-    [
-      '..y..',
-      '..w..',
-      'ywwwy',
-      '..w..',
-      '..y..',
-    ],
-    [
-      '..y..',
-      '.....',
-      'y...y',
-      '.....',
-      '..y..',
-    ],
-  ],
-});
-
-// ── Flower painters ───────────────────────────────────
-// Heads are painted into a little grid of palette letters, which is then
-// outlined and turned into a canvas:
-//   o ink outline      k dark rim around the face (petal hue)
-//   d m l h            petal ramp from PX.ramp: shadow, base, light, highlight
-//   D M E              petal edges (see _resolveEdges)
-//   g e G              greens      y w Y  yellows      b B n  browns
-//   x                  near-black flower centres
-const FLOWER_ART = (() => {
-  const TAU = Math.PI * 2;
-
-  // How much a petal pointing in direction `a` faces the sun (top-left).
-  const lit = a => -(Math.cos(a) + Math.sin(a)) / Math.SQRT2;
-  // The edge letter that goes with a petal body colour.
-  const EDGE = { l: 'M', m: 'D', h: 'M', d: 'D' };
-
-  class Grid {
-    constructor(w, h) { this.w = w; this.h = h; this.d = new Array(w * h).fill('.'); }
-    get(x, y) { return (x < 0 || y < 0 || x >= this.w || y >= this.h) ? '.' : this.d[y * this.w + x]; }
-    set(x, y, ch) {
-      x = Math.round(x); y = Math.round(y);
-      if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.d[y * this.w + x] = ch;
-    }
-    // Filled circle with the same stair-stepping as PX.circle / PX.photo.
-    // The centre may sit between pixels.
-    disc(cx, cy, r, ch) {
-      const rr = (r + 0.35) * (r + 0.35), R = Math.ceil(r) + 1;
-      const x0 = Math.round(cx), y0 = Math.round(cy);
-      for (let y = y0 - R; y <= y0 + R; y++) {
-        for (let x = x0 - R; x <= x0 + R; x++) {
-          if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= rr) this.set(x, y, ch);
-        }
-      }
-    }
-    // A round petal: body colour with an edge that _resolveEdges turns
-    // into a dark seam wherever it lies over another petal.
-    // With strong = true the seam is always the shadow colour.
-    lobe(cx, cy, r, body, strong) {
-      this.disc(cx, cy, r, strong && body === 'l' ? 'E' : EDGE[body]);
-      this.disc(cx, cy, r - 1, body);
-    }
-    // The dark rim a photo of radius r sits inside: exactly the pixels
-    // PX.photo will cover, plus the ring of pixels touching them.
-    photoRim(cx, cy, r, ch) {
-      const inside = (dx, dy) => Math.abs(dy) <= r &&
-        Math.abs(dx) <= Math.round(Math.sqrt((r + 0.35) * (r + 0.35) - dy * dy));
-      for (let dy = -r - 1; dy <= r + 1; dy++) {
-        for (let dx = -r - 1; dx <= r + 1; dx++) {
-          if (inside(dx, dy) || inside(dx - 1, dy) || inside(dx + 1, dy) ||
-              inside(dx, dy - 1) || inside(dx, dy + 1)) this.set(cx + dx, cy + dy, ch);
-        }
-      }
-    }
-    // A petal growing from the centre (cx, cy) in direction `a`, from
-    // radius r0 out to r1. half(s) is its half-width at s = 0 (base)..1
-    // (tip); shade(s, u) picks the letter, u = -1..1 across the petal.
-    petal(cx, cy, a, r0, r1, half, shade) {
-      const ca = Math.cos(a), sa = Math.sin(a), len = r1 - r0;
-      const R = Math.ceil(r1) + 2;
-      for (let dy = -R; dy <= R; dy++) {
-        for (let dx = -R; dx <= R; dx++) {
-          const al = dx * ca + dy * sa;
-          if (al < r0 || al > r1) continue;
-          const s = (al - r0) / len, hw = half(s);
-          if (hw <= 0) continue;
-          const ac = -dx * sa + dy * ca;
-          if (Math.abs(ac) > hw) continue;
-          const ch = shade(s, ac / hw);
-          if (ch) this.set(cx + dx, cy + dy, ch);
-        }
-      }
-    }
-    // Petal edges touching the outside become the petal's own colour (the
-    // ink outline is enough there); edges lying on another petal go dark.
-    _resolveEdges() {
-      const out = this.d.slice();
-      for (let y = 0; y < this.h; y++) {
-        for (let x = 0; x < this.w; x++) {
-          const ch = this.get(x, y);
-          if (ch !== 'D' && ch !== 'M' && ch !== 'E') continue;
-          let open = false;
-          for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) if (this.get(x + i, y + j) === '.') open = true;
-          out[y * this.w + x] = ch === 'D' ? (open ? 'm' : 'd') : ch === 'E' ? (open ? 'l' : 'd') : (open ? 'l' : 'm');
-        }
-      }
-      this.d = out;
-    }
-    // One-pixel outline around everything painted so far.
-    outline(ch) {
-      const out = this.d.slice();
-      for (let y = 0; y < this.h; y++) {
-        for (let x = 0; x < this.w; x++) {
-          if (this.get(x, y) !== '.') continue;
-          if (this.get(x - 1, y) !== '.' || this.get(x + 1, y) !== '.' ||
-              this.get(x, y - 1) !== '.' || this.get(x, y + 1) !== '.') out[y * this.w + x] = ch;
-        }
-      }
-      this.d = out;
-    }
-    // Copies rows of letters into the grid ('.' leaves what is there).
-    stamp(rows, x, y) {
-      for (let j = 0; j < rows.length; j++) {
-        for (let i = 0; i < rows[j].length; i++) {
-          if (rows[j][i] !== '.') this.set(x + i, y + j, rows[j][i]);
-        }
-      }
-    }
-    // Turns the grid into a canvas cropped to what was painted. (ax, ay)
-    // is the grid pixel to remember as the anchor; returns { cv, ax, ay }
-    // with the anchor moved into the cropped canvas.
-    toArt(pal, ax, ay) {
-      let x0 = this.w, y0 = this.h, x1 = -1, y1 = -1;
-      for (let y = 0; y < this.h; y++) {
-        for (let x = 0; x < this.w; x++) {
-          if (this.d[y * this.w + x] === '.') continue;
-          if (x < x0) x0 = x;
-          if (x > x1) x1 = x;
-          if (y < y0) y0 = y;
-          if (y > y1) y1 = y;
-        }
-      }
-      if (x1 < 0) { x0 = y0 = 0; x1 = y1 = 0; }
-      const cv = document.createElement('canvas');
-      cv.width = x1 - x0 + 1; cv.height = y1 - y0 + 1;
-      const g = cv.getContext('2d');
-      for (let y = y0; y <= y1; y++) {
-        for (let x = x0; x <= x1; x++) {
-          const col = pal[this.d[y * this.w + x]];
-          if (!col) continue;
-          g.fillStyle = col;
-          g.fillRect(x - x0, y - y0, 1, 1);
-        }
-      }
-      return { cv, ax: ax - x0, ay: ay - y0 };
-    }
+  // A box from its corners.
+  function box(L, x0, x1, y0, y1, z0, z1, c) {
+    L.push({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: (z0 + z1) / 2,
+      w: Math.abs(x1 - x0), h: Math.abs(y1 - y0), d: Math.abs(z1 - z0), c });
+  }
+  // The same petal on all four sides of the bloom. `a` runs along the
+  // side, `r` is the distance out from the middle. c is one colour or
+  // four: [top, right, bottom, left].
+  function sides(L, a0, a1, r0, r1, z0, z1, c) {
+    const col = i => (Array.isArray(c) ? c[i] : c);
+    box(L, a0, a1, r0, r1, z0, z1, col(0));
+    box(L, r0, r1, -a1, -a0, z0, z1, col(1));
+    box(L, -a1, -a0, -r1, -r0, z0, z1, col(2));
+    box(L, -r1, -r0, a0, a1, z0, z1, col(3));
+  }
+  // The same block at all four corners. c is one colour or four:
+  // [top right, bottom right, bottom left, top left].
+  function corners(L, x0, x1, y0, y1, z0, z1, c) {
+    const col = i => (Array.isArray(c) ? c[i] : c);
+    box(L, x0, x1, y0, y1, z0, z1, col(0));
+    box(L, x0, x1, -y1, -y0, z0, z1, col(1));
+    box(L, -x1, -x0, -y1, -y0, z0, z1, col(2));
+    box(L, -x1, -x0, y0, y1, z0, z1, col(3));
   }
 
-  function palette(ramp) {
-    return {
-      o: PAL.ink, k: ramp.o, d: ramp.d, m: ramp.m, l: ramp.l, h: ramp.h,
-      g: PAL.gr3, e: PAL.gr2, G: PAL.gr5,
-      y: PAL.ye2, w: PAL.ye1, Y: PAL.ye3,
-      b: PAL.wo2, B: PAL.wo3, n: PAL.wo4, x: PAL.black,
-    };
-  }
-
-  // ── The eight heads ─────────────────────────────────
-  // Each painter gets the grid, its centre c, the radius R of the middle
-  // (the face with its rim, or the flower's own disc), the petal length L
-  // and whether a face will be drawn on top.
-
-  // Daisy: a full ring of slim, pale, round-tipped petals that touch at
-  // the base and part at the tips, round a yellow button.
-  function daisy(g, c, R, L, face) {
-    const reach = R + L, n = 2 * Math.round(reach * 0.535);
-    for (let i = 0; i < n; i++) {
-      const a = (i + 0.5) / n * TAU - Math.PI / 2;
-      const body = lit(a) > -0.25 ? 'h' : 'l';
-      g.petal(c, c, a, R - 1, reach, s => (s > 0.8 ? 1.1 : 1.9), (s, u) => {
-        if (s < 0.2) return 'm';
-        return Math.abs(u) > 0.55 && s <= 0.8 ? (body === 'h' ? 'M' : 'D') : body;
-      });
-    }
-    if (!face) {
-      g.disc(c, c, R, 'Y');
-      g.disc(c - 0.5, c - 0.5, R - 1, 'y');
-      g.set(c - 1, c - 1, 'w');
-    }
-  }
-
-  // Sunflower: two rows of pointed petals round a wide seed disc.
-  function sunflower(g, c, R, L, face) {
-    const reach = R + L, n = 2 * Math.round(reach * 0.4);
-    const half = s => 2.7 * (1 - s) + 0.45;
-    for (let i = 0; i < n; i++) {
-      const a = (i + 0.5) / n * TAU - Math.PI / 2;
-      g.petal(c, c, a, R - 1, reach - 0.8, half, () => 'd');
-    }
-    for (let i = 0; i < n; i++) {
-      const a = i / n * TAU - Math.PI / 2;
-      const body = lit(a) > -0.2 ? 'l' : 'm';
-      g.petal(c, c, a, R - 1, reach + 0.5, half, s => (s < 0.16 ? 'd' : body));
-    }
-    // Seeds: a brown disc with a checker of darker seeds
-    g.disc(c, c, R, 'B');
-    for (let dy = -R; dy <= R; dy++) {
-      for (let dx = -R; dx <= R; dx++) {
-        if (g.get(c + dx, c + dy) !== 'B') continue;
-        const d2 = dx * dx + dy * dy;
-        if (d2 > (R - 0.8) * (R - 0.8)) g.set(c + dx, c + dy, 'n');
-        else if (((dx + dy) & 1) === 0) g.set(c + dx, c + dy, d2 < R * R * 0.2 ? 'n' : 'b');
+  // ── The eight blooms ────────────────────────────────
+  // Each painter adds its petals to L. R = PX.ramp colours (d shadow,
+  // m base, l light, h highlight, o darkest). o(v) is a distance v
+  // beyond the edge of the backing, shortened on group plants.
+  // Returns the colour of the backing slab.
+  const BLOOMS = {
+    // Daisy: a ring of small pale cubes with gaps between them, round a
+    // yellow middle.
+    daisy(L, R, o) {
+      for (const [a, col, z] of [[-0.9, R.l, -0.08], [-0.3, R.h, 0], [0.3, R.h, 0], [0.9, R.l, -0.08]]) {
+        sides(L, a - 0.23, a + 0.23, BACK, o(0.5), z - 0.3, z + 0.02, col);
       }
-    }
-  }
+      corners(L, BACK - 0.04, o(0.4), BACK - 0.04, o(0.4), -0.42, -0.1, R.m);
+      return PAL.ye2;
+    },
 
-  // Cosmos: eight broad wedge petals, each ending in a toothed tip.
-  function cosmos(g, c, R, L, face) {
-    const n = R >= 5 ? 8 : 6, reach = R + L, len = L + 1;
-    const base = Math.max(1.2, R * 0.36), tip = Math.max(base + 1, reach * 0.3);
-    for (let i = 0; i < n; i++) {
-      const a = (i + 0.5) / n * TAU - Math.PI / 2;
-      const body = lit(a) > -0.2 ? 'l' : 'm';
-      g.petal(c, c, a, R - 1, reach, s => base + (tip - base) * s, (s, u) => {
-        const hw = base + (tip - base) * s, ac = Math.abs(u) * hw;
-        const last = s > 1 - 1.3 / len;
-        // Teeth: the corners and two notches are cut out of the last row
-        if (last && (ac > hw - 0.9 || (ac >= 0.9 && ac < 1.9 && tip >= 3.4))) return null;
-        if (ac > hw - 1) return body === 'l' ? 'E' : 'D';
-        if (ac < 0.5 && s < 0.6 && tip >= 3.4) return body === 'l' ? 'm' : 'd';   // centre vein
-        return body;
-      });
-    }
-    if (!face) {
-      g.disc(c, c, R, 'Y');
-      g.disc(c - 0.5, c - 0.5, R - 1, 'y');
-    }
-  }
-
-  // Anemone: a wheel of plump overlapping round petals with a pale halo
-  // round a dark middle.
-  function anemone(g, c, R, L, face) {
-    const n = R >= 8 ? 7 : R >= 4 ? 6 : 5, reach = R + L;
-    const rho = reach * 0.37, d = reach - rho;
-    for (let i = 0; i < n; i++) {
-      const a = i / n * TAU - Math.PI / 2;
-      g.lobe(c + Math.cos(a) * d, c + Math.sin(a) * d, rho, lit(a) > -0.3 ? 'l' : 'm', true);
-    }
-    g._resolveEdges();
-    // Pale ring just outside the middle
-    const hi = (R + 1.6) * (R + 1.6);
-    for (let dy = -R - 2; dy <= R + 2; dy++) {
-      for (let dx = -R - 2; dx <= R + 2; dx++) {
-        const ch = g.get(c + dx, c + dy);
-        if (dx * dx + dy * dy <= hi && (ch === 'l' || ch === 'm' || ch === 'd')) g.set(c + dx, c + dy, 'h');
+    // Tulip: a cup of tall slabs round the lower half of the face, the
+    // sides rising to stepped points, the back petal showing over the top.
+    tulip(L, R, o) {
+      box(L, -o(0.38), o(0.38), -o(0.42), -BACK, -0.32, 0.04, R.m);        // bottom of the cup
+      box(L, -0.85, 0.85, -o(0.72), -o(0.42), -0.32, 0, R.d);              // its rounded base
+      for (const [s, col] of [[-1, R.l], [1, R.m]]) {                      // the two side petals
+        box(L, s * BACK, s * o(0.38), -o(0.42), 0.55, -0.3, 0.04, col);
+        box(L, s * (BACK - 0.1), s * o(0.3), 0.55, 1.1, -0.3, 0, col);
+        box(L, s * (BACK - 0.3), s * o(0.16), 1.1, o(0.3), -0.3, -0.03, col);
+        box(L, s * (BACK - 0.42), s * o(0.0), o(0.3), o(0.55), -0.3, -0.03, col);
       }
-    }
-    if (!face) {
-      g.disc(c, c, R, 'x');
-      g.disc(c, c, R - 1, 'k');
-      g.set(c - 1, c - 1, 'd');
-    }
-  }
+      box(L, -0.6, 0.6, BACK - 0.1, o(0.34), -0.46, -0.16, R.d);           // the petal behind
+      box(L, -0.36, 0.36, o(0.34), o(0.62), -0.46, -0.16, R.d);
+      box(L, -0.14, 0.14, o(0.62), o(0.84), -0.46, -0.16, R.d);
+      return R.m;
+    },
 
-  // Poppy: four big floppy petals, two behind and two in front, with dark
-  // blotches at their bases.
-  function poppy(g, c, R, L, face) {
-    const reach = R + L, rho = reach * 0.5, d = reach - rho;
-    // top and bottom sit behind; the sunny side is lighter
-    const petals = [[-Math.PI / 2, 'l'], [Math.PI / 2, 'm'], [Math.PI, 'l'], [0, 'm']];
-    for (const [a, body] of petals) {
-      g.lobe(c + Math.cos(a) * d, c + Math.sin(a) * d, rho, body, true);
-    }
-    g._resolveEdges();
-    for (const [a] of petals) {
-      const br = Math.max(1.2, reach * 0.12);
-      g.disc(c + Math.cos(a) * (R + 0.6), c + Math.sin(a) * (R + 0.6), br, 'k');
-    }
-    if (!face) {
-      g.disc(c, c, R, 'x');
-      for (let i = 0; i < 6; i++) {
-        const a = i / 6 * TAU;
-        g.set(c + Math.cos(a) * (R - 0.5), c + Math.sin(a) * (R - 0.5), 'y');
+    // Poppy: four big floppy slabs, top and bottom behind, left and right
+    // in front, each with a dark blotch at its base.
+    poppy(L, R, o) {
+      const cz = [[-0.46, -0.16], [-0.3, 0.02]];
+      for (let i = 0; i < 4; i++) {
+        const [z0, z1] = cz[i % 2], col = i % 2 ? R.m : R.l;
+        const one = (a0, a1, r0, r1, c, za, zb) => {
+          if (i === 0) box(L, a0, a1, r0, r1, za, zb, c);
+          if (i === 1) box(L, r0, r1, -a1, -a0, za, zb, c);
+          if (i === 2) box(L, -a1, -a0, -r1, -r0, za, zb, c);
+          if (i === 3) box(L, -r1, -r0, a0, a1, za, zb, c);
+        };
+        one(-1.18, 1.18, BACK - 0.02, o(0.62), col, z0, z1);
+        one(-0.72, 0.72, o(0.62), o(0.9), col, z0, z1);
+        one(-0.3, 0.3, BACK, BACK + 0.2, R.o, z1, z1 + 0.04);
       }
-      g.set(c, c, 'e');
-    }
-  }
+      return R.d;
+    },
 
-  // Rose: two tiers of overlapping petals with green sepals showing
-  // underneath; without a face the middle is a tight swirl.
-  function rose(g, c, R, L, face) {
-    const reach = R + L;
-    for (const off of [-0.75, 0, 0.75]) {       // sepals, behind the petals
-      g.petal(c, c, Math.PI / 2 + off, R, reach + 2.2, s => 2.2 * (1 - s) + 0.4,
-        (s, u) => (u > 0.2 ? 'G' : 'g'));
-    }
-    const rho = reach * 0.5, d = reach - rho;
-    for (let i = 0; i < 5; i++) {
-      const a = i / 5 * TAU - Math.PI / 2;
-      g.lobe(c + Math.cos(a) * d, c + Math.sin(a) * d, rho, 'm', true);
-    }
-    const reach2 = reach - Math.max(1.6, L * 0.42), rho2 = reach2 * 0.5, d2 = reach2 - rho2;
-    for (let i = 0; i < 5; i++) {
-      const a = (i + 0.5) / 5 * TAU - Math.PI / 2;
-      g.lobe(c + Math.cos(a) * d2, c + Math.sin(a) * d2, rho2, 'l', true);
-    }
-    if (!face) {
-      // The heart of the rose: tighter and tighter turns
-      g.lobe(c + 0.5, c + 0.5, R + 0.5, 'm');
-      g.lobe(c - 0.5, c - 0.5, R - 0.5, 'l');
-      if (R >= 3) g.lobe(c + 0.5, c, R - 1.6, 'h');
-      g.set(c, c, 'd'); g.set(c + 1, c, 'd'); g.set(c + 1, c - 1, 'd');
-    }
-  }
-
-  // Lily: a six-pointed star of long petals, each with a pale midrib.
-  function lily(g, c, R, L, face) {
-    const reach = R + L, W = Math.max(1.6, reach * 0.175);
-    const half = s => (s < 0.3 ? W * (0.6 + 0.4 * s / 0.3) : W * (1 - (s - 0.3) / 0.7) + 0.35);
-    for (const start of [1, 0]) {               // three behind, then three in front
-      for (let i = start; i < 6; i += 2) {
-        const a = i / 6 * TAU - Math.PI / 2;
-        const body = start === 1 ? 'm' : 'l';
-        g.petal(c, c, a, R - 1, reach, half, (s, u) => {
-          const au = Math.abs(u);
-          if (au > 0.72 && s < 0.9) return EDGE[body];
-          if (au < 0.2 && s > 0.12 && s < 0.82) return body === 'l' ? 'h' : 'l';
-          return body;
-        });
+    // Sunflower: a close ring of blocks, long and short by turns, round a
+    // wide brown frame studded with seeds.
+    sunflower(L, R, o) {
+      const B2 = BACK + 0.1;
+      for (let k = -2; k <= 2; k++) {
+        const a = k * 0.52, long = k % 2 === 0;
+        sides(L, a - 0.25, a + 0.25, B2, o(long ? 0.72 : 0.5), long ? -0.3 : -0.4, long ? 0.02 : -0.1, long ? R.l : R.m);
+        if (long) sides(L, a - 0.12, a + 0.12, o(0.72), o(0.92), -0.3, -0.04, R.l);
       }
-    }
-    if (!face) {
-      g.disc(c, c, R, 'G');
-      g.disc(c, c, R - 1, 'e');
-      for (let i = 0; i < 6; i += 2) {          // anthers on the front petals
-        const a = i / 6 * TAU - Math.PI / 2;
-        g.set(c + Math.cos(a) * (R + 2), c + Math.sin(a) * (R + 2), 'n');
-        g.set(c + Math.cos(a) * (R + 1), c + Math.sin(a) * (R + 1), 'Y');
+      corners(L, B2 - 0.02, o(0.52), B2 - 0.02, o(0.52), -0.4, -0.1, R.d);
+      // the brown frame and its seeds
+      box(L, -B2, B2, -B2, B2, -0.36, -0.04, PAL.wo3);
+      for (let k = -3; k <= 3; k++) {
+        sides(L, k * 0.36 - 0.08, k * 0.36 + 0.08, FRAME + 0.03, B2 - 0.04, -0.06, -0.01, k % 2 ? PAL.wo4 : PAL.wo1);
       }
-    }
-  }
+      return null;
+    },
 
-  // Tulip: not a ring at all but a cup, round underneath with three
-  // pointed petal tips standing above the face.
-  function tulip(g, c, R, L, face) {
-    const hw = R + L - 1;            // half-width of the cup
-    const tipY = -(R + L);           // top of the three points
-    const crown = -R;                // where the points join the cup
-    const bot = R + L;               // depth below the centre
-    const tx = hw - 2;               // centre of the outer points
-    const slope = (tx / 2 + 0.6) / (crown - tipY);
-    for (let dy = tipY; dy <= bot; dy++) {
-      for (let dx = -hw; dx <= hw; dx++) {
-        let inside, tooth = 0;
-        if (dy >= 0) inside = (dx * dx) / ((hw + 0.4) * (hw + 0.4)) + (dy * dy) / ((bot + 0.4) * (bot + 0.4)) <= 1;
-        else if (dy >= crown) inside = true;
-        else {
-          const reachX = (dy - tipY) * slope + 0.5;
-          inside = false;
-          for (const k of [-1, 0, 1]) if (Math.abs(dx - k * tx) <= reachX) { inside = true; tooth = k; }
-        }
-        if (!inside) continue;
-        // Left petal in the light, right petal in shade, back petal between
-        let ch;
-        if (dy < crown) ch = tooth < 0 ? 'l' : tooth > 0 ? 'm' : 'd';
-        else if (dx < -tx / 2) ch = 'l';
-        else if (dx > tx / 2) ch = 'm';
-        else ch = dy < R * 0.4 ? 'd' : (dx <= 0 ? 'l' : 'm');
-        if (ch === 'l' && dx === -hw + 2 && dy > crown && dy < R * 0.5) ch = 'h';
-        if (ch === 'm' && (dx >= hw - 1 || dy >= bot - 1)) ch = 'd';
-        g.set(c + dx, c + dy, ch);
-      }
-    }
-    if (!face) {
-      // Closed tulip: the two front petals meet along a seam
-      for (let dy = Math.round(crown * 0.2); dy <= bot - 2; dy++) g.set(c + 1, c + dy, 'd');
-    }
-  }
+    // Cosmos: eight broad petals that widen outward and end in teeth.
+    cosmos(L, R, o) {
+      sides(L, -0.5, 0.5, BACK, o(0.3), -0.32, -0.02, R.l);
+      sides(L, -0.78, 0.78, o(0.3), o(0.62), -0.32, -0.02, R.l);
+      for (const a of [-0.6, 0, 0.6]) sides(L, a - 0.16, a + 0.16, o(0.62), o(0.84), -0.32, -0.02, R.h);
+      corners(L, 1.0, o(0.42), 1.0, o(0.42), -0.44, -0.14, R.m);
+      corners(L, o(0.42), o(0.62), o(0.2), o(0.42), -0.44, -0.14, R.m);
+      corners(L, o(0.2), o(0.42), o(0.42), o(0.62), -0.44, -0.14, R.m);
+      return R.d;
+    },
 
-  // name -> painter, petal length beside an 8-pixel face, and the disc
-  // radius / petal length of the faceless flower.
-  const HEADS = {
-    daisy:     { paint: daisy,     L: 6, c: 3, Lf: 6 },
-    tulip:     { paint: tulip,     L: 5, c: 3, Lf: 4 },
-    poppy:     { paint: poppy,     L: 6, c: 2, Lf: 8 },
-    sunflower: { paint: sunflower, L: 6, c: 6, Lf: 6, rim: 2 },
-    cosmos:    { paint: cosmos,    L: 6, c: 2, Lf: 8 },
-    rose:      { paint: rose,      L: 5, c: 3, Lf: 6 },
-    lily:      { paint: lily,      L: 8, c: 2, Lf: 9 },
-    anemone:   { paint: anemone,   L: 5, c: 3, Lf: 6 },
+    // Rose: tiers of petals stepping forward toward the face, with a curl
+    // of lighter petal at two corners and green sepals underneath.
+    rose(L, R, o) {
+      sides(L, -1.1, 1.1, 1.0, o(0.72), -0.52, -0.24, [R.d, R.m, R.d, R.m]);   // outer tier
+      box(L, -o(0.44), o(0.44), -o(0.44), o(0.44), -0.4, -0.12, R.m);           // middle tier
+      box(L, o(0.1), o(0.5), o(0.1), o(0.5), -0.3, 0, R.l);                     // curls
+      box(L, -o(0.5), -o(0.1), -o(0.5), -o(0.1), -0.3, 0, R.l);
+      box(L, -0.22, 0.22, -o(1.08), -o(0.7), -0.5, -0.3, PAL.gr3);              // sepals
+      box(L, -0.95, -0.55, -o(0.92), -o(0.7), -0.5, -0.3, PAL.gr2);
+      box(L, 0.55, 0.95, -o(0.92), -o(0.7), -0.5, -0.3, PAL.gr2);
+      return R.l;
+    },
+
+    // Lily: a star of long stepped points with a pale rib down each, and
+    // short points between them.
+    lily(L, R, o) {
+      sides(L, -0.6, 0.6, BACK, o(0.36), -0.32, -0.02, R.l);
+      sides(L, -0.38, 0.38, o(0.36), o(0.7), -0.32, -0.02, R.l);
+      sides(L, -0.17, 0.17, o(0.7), o(0.98), -0.32, -0.02, R.l);
+      sides(L, -0.08, 0.08, BACK, o(0.74), -0.04, 0.03, R.h);
+      corners(L, 0.95, o(0.26), 0.95, o(0.26), -0.44, -0.14, R.m);
+      corners(L, o(0.26), o(0.5), o(0.26), o(0.5), -0.44, -0.14, R.d);
+      return R.m;
+    },
+
+    // Anemone: four big cubes at the corners and a plump block on each
+    // side, round a pale halo.
+    anemone(L, R, o) {
+      sides(L, -0.82, 0.82, BACK, o(0.42), -0.46, -0.12, R.m);
+      corners(L, 0.9, o(0.6), 0.9, o(0.6), -0.42, -0.02, [R.l, R.m, R.l, R.m]);
+      return R.h;
+    },
   };
 
+  // What stands where the photo would be on a flower with no face:
+  // [block colour, raised middle colour, dot colour or null].
+  const CENTRES = {
+    daisy: R => [PAL.ye3, PAL.ye1, null],
+    tulip: R => [R.m, R.l, null],
+    poppy: R => [PAL.black, PAL.ink, PAL.ye2],
+    sunflower: R => [PAL.wo3, PAL.wo4, PAL.wo1],
+    cosmos: R => [PAL.ye3, PAL.ye2, null],
+    rose: R => [R.m, R.h, R.d],
+    lily: R => [PAL.gr3, PAL.gr1, PAL.ye3],
+    anemone: R => [R.o, R.d, PAL.ye2],
+  };
+
+  // Stems are darker than the lawn so they show against it.
+  const GREEN = [PAL.gr4, '#35704a'];
+
+  // A post of green boxes from y0 up to y1.
+  function post(L, x, z, y0, y1, th, cols) {
+    let i = Math.round(y0 * 2);
+    for (let y = y0; y < y1 - 0.001; i++) {
+      const top = Math.min(y1, Math.floor(y * 2 + 1.001) / 2);
+      box(L, x - th / 2, x + th / 2, y, top, z - th / 2, z + th / 2, cols[((i % 2) + 2) % 2]);
+      y = top;
+    }
+  }
+  // A leaf sticking out to one side: a short stalk, a square slab and a
+  // smaller lighter slab stepping out to its tip.
+  function leaf(L, x, y, dir, w, h) {
+    box(L, x, x + dir * 0.14, y + 0.04, y + 0.13, -0.03, 0.03, GREEN[0]);
+    box(L, x + dir * 0.12, x + dir * (0.12 + w * 0.7), y, y + h, -0.06, 0.06, PAL.gr2);
+    box(L, x + dir * (0.12 + w * 0.7), x + dir * (0.12 + w), y + h * 0.3, y + h * 0.85, -0.06, 0.06, PAL.gr1);
+  }
+
   return {
-    Grid, palette, HEADS,
+    FRAME, BACK, box,
 
-    // Petal length, in art pixels, of the head drawn round a face of
-    // radius r. Small faces get much shorter petals so that a settled
-    // flower is mostly portrait. `trim` takes a pixel or two more off
-    // (group plants use it so their blooms sit closer together).
-    petalLen(typeName, r, trim) {
-      const T = HEADS[typeName] || HEADS.daisy;
-      return Math.max(2, Math.round(T.L * (r - 1) / 7) - (trim || 0));
+    // The blocks of one bloom, in bloom units. ramp = PX.ramp colours,
+    // face = true for a bloom that will carry a photo, trim = 0..1 how
+    // much shorter the petals are (group plants). Returns { boxes, reach }:
+    // reach is how far the petals go from the middle.
+    bloom(typeName, ramp, face, trim) {
+      const L = [], k = 0.9 - 0.2 * (trim || 0);
+      const o = v => BACK + v * k;
+      const paint = BLOOMS[typeName] || BLOOMS.daisy;
+      const backing = paint(L, ramp, o);
+      if (backing) box(L, -BACK, BACK, -BACK, BACK, -0.34, -0.05, backing);
+      if (face) {
+        box(L, -FRAME, FRAME, -FRAME, FRAME, -0.12, 0, ramp.o);            // the dark frame
+      } else {
+        const [c1, c2, c3] = (CENTRES[typeName] || CENTRES.daisy)(ramp);
+        box(L, -FRAME, FRAME, -FRAME, FRAME, -0.12, 0.3, c1);
+        box(L, -0.62, 0.62, -0.62, 0.62, 0.3, 0.46, c2);
+        if (c3) corners(L, 0.62, 0.9, 0.62, 0.9, 0.3, 0.42, c3);
+      }
+      let reach = 0;
+      for (const b of L) reach = Math.max(reach, Math.abs(b.x) + b.w / 2, Math.abs(b.y) + b.h / 2);
+      return { boxes: L, reach };
     },
 
-    // How far a face head reaches from the middle of the face, outline
-    // included (a pixel or so more for the odd petal tip).
-    headReach(typeName, r, L) {
-      const T = HEADS[typeName] || HEADS.daisy;
-      return r + (T.rim || 1) + L + 1;
+    // The stem of a single flower, H blocks tall, with its leaves below
+    // `leafTop`. style = the type's stemStyle; jog = how far the top of a
+    // nodding stem steps sideways.
+    stem(L, typeName, style, H, leafTop, jog) {
+      const th = style === 'thick' ? 0.1875 : 0.125;
+      const cols = GREEN;
+      if (jog) {
+        const turn = Math.max(0.6, leafTop - 0.1);
+        post(L, 0, 0, 0, turn, th, cols);
+        box(L, -th / 2, jog + th / 2, turn - th, turn, -th / 2, th / 2, PAL.gr3);
+        post(L, jog, 0, turn, H, th, cols);
+      } else post(L, 0, 0, 0, H, th, cols);
+      const top = Math.max(0.5, leafTop - 0.35);
+      if (typeName === 'tulip' || typeName === 'lily') {
+        // long blade leaves rising from the foot
+        const h = Math.min(1.7, top + 0.2);
+        box(L, 0.06, 0.26, 0, h * 0.7, -0.05, 0.05, PAL.gr2);
+        box(L, 0.26, 0.46, h * 0.3, h, -0.05, 0.05, PAL.gr2);
+        box(L, 0.3, 0.42, h * 0.8, h + 0.12, -0.05, 0.05, PAL.gr1);
+        box(L, -0.26, -0.06, 0, h * 0.5, -0.05, 0.05, PAL.gr3);
+        box(L, -0.44, -0.26, h * 0.2, h * 0.72, -0.05, 0.05, PAL.gr2);
+      } else if (typeName === 'sunflower') {
+        leaf(L, 0.08, top * 0.45, 1, 0.7, 0.5);
+        leaf(L, -0.08, top * 0.75, -1, 0.6, 0.45);
+        leaf(L, -0.08, top * 0.15, -1, 0.5, 0.36);
+      } else if (style === 'wispy') {
+        // feathery: little cubes on thin stalks, alternating
+        for (let i = 0; i < 4; i++) {
+          const y = top * (0.2 + i * 0.25), dir = i % 2 ? -1 : 1;
+          box(L, dir * 0.05, dir * 0.34, y, y + 0.07, -0.03, 0.03, PAL.gr3);
+          box(L, dir * 0.3, dir * 0.52, y, y + 0.22, -0.06, 0.06, i % 2 ? PAL.gr2 : PAL.gr1);
+        }
+      } else {
+        leaf(L, 0.05, top * 0.4, 1, 0.5, 0.36);
+        leaf(L, -0.05, top * 0.8, -1, 0.42, 0.3);
+        if (style === 'thorny') {
+          for (let y = 0.35, i = 0; y < leafTop; y += 0.45, i++) {
+            const dir = i % 2 ? -1 : 1;
+            box(L, dir * 0.06, dir * 0.17, y, y + 0.09, -0.04, 0.04, PAL.br3);
+          }
+        }
+      }
     },
 
-    // A flower head for a face of radius r (art pixels) or, with
-    // face = false, a faceless flower `r/8` times its normal size.
-    // L overrides the petal length of a face head (see petalLen).
-    // Returns { cv, ax, ay }: the canvas and the pixel at the middle of
-    // the face.
-    head(typeName, r, face, ramp, L) {
-      const T = HEADS[typeName] || HEADS.daisy;
-      const R = face ? r + (T.rim || 1) : Math.max(1, Math.round(T.c * r / 8));
-      if (!face) L = Math.max(2, Math.round(T.Lf * r / 8));
-      else if (!L) L = this.petalLen(typeName, r);
-      const c = R + L + 4;
-      const g = new Grid(c * 2 + 1, c * 2 + 1);
-      T.paint(g, c, R, L, face);
-      g._resolveEdges();
-      // The dark rim the photo sits inside
-      if (face) g.photoRim(c, c, r, 'k');
-      g.outline('o');
-      return g.toArt(palette(ramp), c, c);
+    // The stem and branches of a group plant. pts = the bloom centres
+    // [{ x, y }] in blocks from the foot; drop = how far below its bloom
+    // each branch runs. The main stem climbs to the highest fork; every
+    // bloom off to one side gets a branch that leaves the stem level,
+    // then turns straight up into the bloom (right angles only).
+    branches(L, typeName, pts, drop) {
+      const th = 0.125;
+      let stemTop = 0.5;
+      for (const p of pts) {
+        if (Math.abs(p.x) < 0.2) { stemTop = Math.max(stemTop, p.y); continue; }
+        const fork = Math.max(0.4, p.y - drop);
+        stemTop = Math.max(stemTop, fork);
+        const s = p.x < 0 ? -1 : 1;
+        box(L, 0, p.x + s * th / 2, fork - th, fork, -th / 2, th / 2, PAL.gr3);
+        post(L, p.x, 0, fork, p.y, th, GREEN);
+        // a leaf under the longer arms
+        if (Math.abs(p.x) > 1.3) box(L, p.x * 0.55 - 0.18, p.x * 0.55 + 0.18, fork - th - 0.26, fork - th, -0.05, 0.05, PAL.gr2);
+      }
+      post(L, 0, 0, 0, stemTop, th, GREEN);
+      if (typeName === 'tulip' || typeName === 'lily') {
+        box(L, 0.06, 0.26, 0, 0.8, -0.05, 0.05, PAL.gr2);
+        box(L, 0.26, 0.46, 0.35, 1.15, -0.05, 0.05, PAL.gr2);
+        box(L, -0.26, -0.06, 0, 0.6, -0.05, 0.05, PAL.gr3);
+      } else {
+        leaf(L, 0.05, 0.25, 1, 0.5, 0.36);
+        leaf(L, -0.05, 0.55, -1, 0.42, 0.3);
+      }
     },
 
-    // A closed bud for the top of a young stem: green sepals with the
-    // petal colour just showing. big = the stage right before it opens.
-    // Returns { cv, ax, ay }: (ax, ay) is the foot of the bud.
-    bud(ramp, big) {
-      const rows = big ? [
-        '...o...',
-        '..olo..',
-        '.olmdo.',
-        '.olmdo.',
-        'oelmdGo',
-        'oegmgGo',
-        '.oggGo.',
-        '..oGo..',
-      ] : [
-        '..o..',
-        '.olo.',
-        'olmdo',
-        'oemGo',
-        'oegGo',
-        '.oGo.',
-      ];
-      const g = new Grid(rows[0].length, rows.length);
-      g.stamp(rows, 0, 0);
-      return g.toArt(palette(ramp), (rows[0].length - 1) / 2, rows.length - 1);
+    // Fresh dirt where a flower was just planted.
+    mound() {
+      const L = [];
+      box(L, -0.5, 0.5, 0, 0.13, -0.38, 0.38, PAL.wo2);
+      box(L, -0.3, 0.3, 0.13, 0.25, -0.24, 0.24, PAL.wo3);
+      box(L, -0.42, -0.26, 0.13, 0.2, 0.1, 0.26, PAL.wo1);
+      box(L, 0.22, 0.4, 0.13, 0.21, -0.2, -0.04, PAL.wo4);
+      box(L, 0.52, 0.66, 0, 0.1, 0.2, 0.34, PAL.wo3);
+      return L;
     },
 
-    // The little flower a student carries: four round petals, like a
-    // dogwood blossom (sunlit at the top left, shaded at the bottom right),
-    // round a yellow middle, on a stem with one leaf. (ax, ay) is the point just under the bottom of
-    // its stem.
+    // The seedling: a shoot with two seed leaves, about half a block tall.
+    sprout() {
+      const L = [];
+      box(L, -0.04, 0.04, 0, 0.42, -0.04, 0.04, PAL.gr2);
+      box(L, 0.04, 0.26, 0.3, 0.44, -0.05, 0.05, PAL.gr1);
+      box(L, -0.26, -0.04, 0.36, 0.5, -0.05, 0.05, PAL.gr2);
+      box(L, -0.04, 0.04, 0.42, 0.52, -0.04, 0.04, PAL.gr1);
+      return L;
+    },
+
+    // Twinkles: small bright cubes scattered round a bloom of reach 1.
+    sparkles() {
+      const L = [];
+      const at = [[-1.0, 0.75, 0.2], [1.05, 0.3, 0.16], [0.25, 1.15, 0.18], [-0.75, -0.6, 0.12], [0.8, -0.85, 0.14], [-0.35, -1.1, 0.1]];
+      at.forEach(([x, y, s], i) => box(L, x - s / 2, x + s / 2, y - s / 2, y + s / 2, 0.3 - s / 2, 0.3 + s / 2, i % 2 ? PAL.ye1 : PAL.white));
+      return L;
+    },
+
+    // The little flower a student carries: a stem post, two leaves, four
+    // petal cubes round a yellow middle. About 0.6 blocks tall, origin at
+    // the bottom of the stem, facing +z.
     tiny(ramp) {
-      const rows = [
-        '.oo.oo.',
-        'ohlolmo',
-        'ollymmo',
-        '.oywYo.',
-        'olmYmdo',
-        'ommoddo',
-        '.ooeoo.',
-        '...eG..',
-      ];
-      const g = new Grid(7, rows.length);
-      g.stamp(rows, 0, 0);
-      return g.toArt(palette(ramp), 3, rows.length);
+      const L = [], T = 1 / 16;
+      box(L, -T / 2, T / 2, 0, 0.36, -T / 2, T / 2, PAL.gr2);
+      box(L, T / 2, T * 2.5, 0.1, 0.2, -T / 2, T / 2, PAL.gr1);
+      box(L, -T * 2.5, -T / 2, 0.18, 0.28, -T / 2, T / 2, PAL.gr3);
+      const cy = 0.44, p = 0.11;
+      box(L, -p / 2, p / 2, cy + p / 2, cy + p * 1.5, -0.05, 0.05, ramp.l);
+      box(L, -p / 2, p / 2, cy - p * 1.5, cy - p / 2, -0.05, 0.05, ramp.m);
+      box(L, -p * 1.5, -p / 2, cy - p / 2, cy + p / 2, -0.05, 0.05, ramp.l);
+      box(L, p / 2, p * 1.5, cy - p / 2, cy + p / 2, -0.05, 0.05, ramp.m);
+      box(L, -p / 2, p / 2, cy - p / 2, cy + p / 2, -0.04, 0.08, PAL.ye2);
+      return L;
     },
   };
 })();
+
+// ── The 2D hand-held flower ───────────────────────────
+// Still drawn on the dashboard and the cards: four round petals (sunlit
+// at the top left, shaded at the bottom right) round a yellow middle, on
+// a stem with one leaf. Returns { cv, ax, ay }: (ax, ay) is the point
+// just under the bottom of its stem.
+const FLOWER_ART = {
+  tiny(ramp) {
+    const rows = [
+      '.oo.oo.',
+      'ohlolmo',
+      'ollymmo',
+      '.oywYo.',
+      'olmYmdo',
+      'ommoddo',
+      '.ooeoo.',
+      '...eG..',
+    ];
+    const pal = { o: PAL.ink, d: ramp.d, m: ramp.m, l: ramp.l, h: ramp.h,
+      e: PAL.gr2, G: PAL.gr5, y: PAL.ye2, w: PAL.ye1, Y: PAL.ye3 };
+    const cv = document.createElement('canvas');
+    cv.width = 7; cv.height = rows.length;
+    const g = cv.getContext('2d');
+    rows.forEach((row, y) => {
+      for (let x = 0; x < row.length; x++) {
+        if (!pal[row[x]]) continue;
+        g.fillStyle = pal[row[x]];
+        g.fillRect(x, y, 1, 1);
+      }
+    });
+    return { cv, ax: 3, ay: rows.length };
+  },
+};

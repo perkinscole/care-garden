@@ -6,13 +6,13 @@
 // Description: Teacher characters that walk to/from the school during
 //   dawn and dusk arrival/departure events. Each teacher has a random
 //   appearance (hair, outfit, sometimes a tote bag or a coffee) and can
-//   display a greeting speech bubble. Drawn as pixel art from the shared
-//   people sprites in js/art/people_art.js.
+//   display a greeting speech bubble. 3D box people built by PEOPLE3
+//   (js/g3_people.js).
 // ================================================================
 
 // What teachers wear. `top` is an index into PEOPLE.SOFTS (or 'white'),
 // `bottom` and `legs` are cloth names on PEOPLE, `tie` a palette colour.
-// Fixed lists keep the number of recoloured sprites small.
+// Fixed lists keep the number of textures small.
 const TEACHER_OUTFITS_M = [
   { top: 'white', bottom: 'NAVY', tie: 'bl3' },
   { top: 0, bottom: 'KHAKI' },
@@ -37,7 +37,9 @@ const TEACHER_OUTFITS_F = [
 const TEACHER_GOODBYES = ["See you tomorrow!", "Good night!", "Go Rams!", "Great work today!"];
 
 // Picks a random teacher look. Men get short hair (or none) and sometimes
-// a beard or a tie; women get longer styles and sometimes a skirt.
+// a beard or a tie; women get longer styles and sometimes a skirt. A few
+// wear glasses (worked out from the rest of the look, so the same random
+// draws give the same teachers as before).
 function makeTeacherLook(isMale) {
   const P = PEOPLE;
   const skin = floor(random(P.SKIN.length));
@@ -56,6 +58,7 @@ function makeTeacherLook(isMale) {
       tie: o.tie ? PAL[o.tie] : undefined,
       bottom: P[o.bottom],
       shoes: random() < 0.5 ? PAL.wo4 : PAL.black,
+      glasses: (skin + hairCol + TEACHER_OUTFITS_M.indexOf(o)) % 3 === 0 ? PAL.g5 : undefined,
     });
   }
   const o = TEACHER_OUTFITS_F[floor(random(TEACHER_OUTFITS_F.length))];
@@ -68,30 +71,24 @@ function makeTeacherLook(isMale) {
     bottom: P[o.bottom],
     legs: o.legs ? P[o.legs] : undefined,
     shoes: random() < 0.5 ? PAL.wo4 : PAL.black,
+    glasses: (skin + hairCol + TEACHER_OUTFITS_F.indexOf(o)) % 4 === 0 ? PAL.re3 : undefined,
   });
 }
 
-// Draws a teacher with whatever they are carrying ('bag', 'coffee' or null).
-// Shared by the Teacher class and the staff card.
-function drawTeacherFigure(x, y, L, dir, leg, carry, face) {
-  PX.shadow(x, y, 12);
-  const top = PEOPLE.top(y, L, leg);
-  if (carry === 'coffee') {
-    // cup held out in front at chest height
-    PEOPLE.draw(x, y, L, dir, leg, 'hold', face);
-    PX.spr('teacherCup', PEOPLE.handX(x, dir, L, 'hold') + dir, top + 4);
-  } else if (carry === 'bag') {
-    // tote bag hanging from a straight arm
-    PEOPLE.draw(x, y, L, dir, leg, 'down', face);
-    PX.spr('teacherBag', PEOPLE.handX(x, dir, L, 'down'), top + 11);
-  } else {
-    PEOPLE.draw(x, y, L, dir, leg, 'walk', face);
-  }
+// Puts whatever a teacher is carrying ('bag', 'coffee' or null) in their
+// hand and returns the arm pose that goes with it. Shared by the Teacher
+// class and the staff card.
+function teacherCarry(m, carry, side) {
+  const u = m.userData;
+  if (!carry) return 'walk';
+  if (!u.prop) u.prop = carry === 'bag' ? PEOPLE3.toteBag() : PEOPLE3.coffeeCup();
+  PEOPLE3.hold(m, u.prop, side);
+  return carry === 'bag' ? 'hang' : 'hold';   // a tote hanging low, a cup held out in front
 }
 
 // A teacher that walks toward or away from the school during arrival/departure
 class Teacher {
-  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+  static g3 = true;      // drawn as a 3D model (see docs/GARDEN_3D.md)
 
   constructor(departing) {
     this.departing = departing || false;
@@ -110,18 +107,16 @@ class Teacher {
     const r = random();
     this.carry = r < 0.3 ? 'bag' : r < 0.55 ? 'coffee' : null;
     this.seed = floor(random(1000));
-    this.fade = 1;
     this.entering = false;   // true for the last steps in through the doors
 
     if (this.departing) {
       // Start at school door, walk outward
       this.wx = PEOPLE.doorX();
-      this.wy = PEOPLE.DOOR_WY + 0.008;
+      this.wy = PEOPLE.DOOR_IN_WY;
       this.twx = this.fromLeft ? -0.08 : 1.08;
       this.twy = random(0.3, 0.7);
       this.dir = this.twx < 0.5 ? -1 : 1;
-      this.fade = 0;   // fades in coming out of the doors
-      this.emerging = true;   // first steps out, seen from the front
+      this.emerging = true;   // first steps out of the doors, toward us
     } else {
       // Start off-screen, walk toward school
       this.wx = this.fromLeft ? -0.08 : 1.08;
@@ -135,7 +130,6 @@ class Teacher {
   // Walk toward target, speak once, mark done when arrived
   update() {
     this.age++;
-    if (this.fade < 1) this.fade = min(1, this.fade + 0.06);
     const dx = this.twx - this.wx;
     const dy = this.twy - this.wy;
     const dist = sqrt(dx * dx + dy * dy);
@@ -170,45 +164,36 @@ class Teacher {
     }
   }
 
-  // Draws the teacher walking; arrivals fade as they go in through the doors
+  // Poses the teacher walking with their bag or coffee: in at the doors, or out of them and away
   draw() {
-    const { x, y } = worldToPx(this.wx, this.wy);
-    const alpha = min(this.fade, PEOPLE.doorAlpha(this));
-    if (alpha <= 0.02) return;
-    const c = PX.c, prevAlpha = c.globalAlpha;
-    c.globalAlpha = prevAlpha * alpha;
-    if (this.entering || this.emerging) {
-      // seen from behind stepping in through the doors, from the front stepping out
-      PX.shadow(x, y, 12);
-      PEOPLE.draw(x, y, this.look, this.dir,
-                  this.entering ? PEOPLE.backFrame(this.walkPhase) : PEOPLE.frontFrame(this.walkPhase));
-    } else {
-      drawTeacherFigure(x, y, this.look, this.dir, PEOPLE.walkFrame(this.walkPhase), this.carry,
-                        PEOPLE.face(PX.tick, this.seed, 'smile'));
-    }
-    c.globalAlpha = prevAlpha;
+    const m = PEOPLE3.model(this, this.emerging ? 0 : this.dir * G3.YAW.right);
+    const moving = PEOPLE3.move(m, this.wx, this.wy);
+    const side = PEOPLE3.nearSide(m);
+    PEOPLE3.pose(m, {
+      walk: moving ? this.walkPhase : null, side,
+      arm: teacherCarry(m, this.carry, side),
+      face: PEOPLE.face(G3.frame, this.seed, 'smile'),
+    });
   }
 }
 
-// I SPY card: three different members of staff bunched together, no wider
-// than 44 art pixels so the card can use its big text. The two at the back
-// (one with a tote bag, one with a coffee) stand a little higher and are
-// drawn first; the one in the middle stands in front and waves.
-CARD_ART.staff = (x, y, tick) => {
-  const P = PEOPLE;
-  const looks = CARD_ART._staffLooks || (CARD_ART._staffLooks = [
-    P.look({ kind: 'skirt', skin: 3, hair: 'bun', hairCol: P.BLACK, top: P.SOFTS[4], collar: PAL.white,
-             tie: PAL.ye2, bottom: P.NAVY, legs: P.CHARCOAL, shoes: PAL.black }),
-    P.look({ kind: 'adult', skin: 1, hair: 'short', hairCol: P.BROWN, top: P.SOFTS[1], collar: PAL.white,
-             bottom: P.KHAKI, shoes: PAL.wo4 }),
-    P.look({ kind: 'adult', skin: 0, hair: 'long', hairCol: P.GINGER, top: P.SOFTS[3], collar: PAL.white,
-             bottom: P.CHARCOAL, shoes: PAL.black }),
-  ]);
-  drawTeacherFigure(x - 12, y - 2, looks[0], 1, 'stand', 'bag', P.face(tick, 1, 'smile'));
-  drawTeacherFigure(x + 13, y - 2, looks[2], -1, 'stand', 'coffee', P.face(tick, 3, 'smile'));
-  // the one in front gives a wave now and then
-  const waving = tick % 260 > 170;
-  PX.shadow(x, y, 12);
-  P.draw(x, y, looks[1], 1, 'stand', waving ? (Math.floor(tick / 10) % 2 ? 'wave1' : 'wave2') : 'down',
-         P.face(tick, 2, 'smile'));
-};
+// I SPY card: three different members of staff side by side: one with a
+// tote bag, one waving, one with a coffee.
+G3.cardArt('staff', () => {
+  const P = PEOPLE, g = new THREE.Group();
+  const a = PEOPLE3.build(P.look({ kind: 'skirt', skin: 3, hair: 'bun', hairCol: P.BLACK, top: P.SOFTS[4], collar: PAL.white,
+    tie: PAL.ye2, bottom: P.NAVY, legs: P.CHARCOAL, shoes: PAL.black, glasses: PAL.re3 }));
+  const b = PEOPLE3.build(P.look({ kind: 'adult', skin: 1, hair: 'short', hairCol: P.BROWN, top: P.SOFTS[1], collar: PAL.white,
+    bottom: P.KHAKI, shoes: PAL.wo4 }));
+  const c = PEOPLE3.build(P.look({ kind: 'adult', skin: 0, hair: 'long', hairCol: P.GINGER, top: P.SOFTS[3], collar: PAL.white,
+    bottom: P.CHARCOAL, shoes: PAL.black }));
+  a.position.set(-1.05, 0, -0.1);
+  b.position.set(0, 0, 0.2);
+  c.position.set(1.05, 0, -0.1);
+  c.rotation.y = -0.5;
+  PEOPLE3.pose(a, { side: 'R', arm: teacherCarry(a, 'bag', 'R'), arm2: 'down', snap: true });
+  PEOPLE3.pose(b, { side: 'L', arm: 'wave', arm2: 'down', t: 2, snap: true });
+  PEOPLE3.pose(c, { side: 'L', arm: teacherCarry(c, 'coffee', 'L'), arm2: 'down', snap: true });
+  g.add(a, b, c);
+  return g;
+});

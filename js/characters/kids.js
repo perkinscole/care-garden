@@ -6,14 +6,14 @@
 // Description: Defines the Kid class for students who exit the school, wander
 //   the garden, pick flowers, pet the ram, then return inside, and the
 //   ArrivalKid class for students with backpacks walking to school at dawn
-//   and home at dusk. Drawn as pixel art from the shared people sprites in
-//   js/art/people_art.js; every student gets a skin tone, hairstyle and
-//   outfit picked from short fixed lists.
+//   and home at dusk. 3D box people built by PEOPLE3 (js/g3_people.js);
+//   every student gets a skin tone, hairstyle and outfit picked from short
+//   fixed lists.
 // ================================================================
 
 // What students wear. `top` is an index into PEOPLE.BRIGHTS (or 'white'),
 // `bottom` a cloth name on PEOPLE. A fixed list keeps the number of
-// recoloured sprites small however many students come and go.
+// textures small however many students come and go.
 const KID_OUTFITS = [
   { top: 0, bottom: 'JEANS' },
   { top: 1, bottom: 'NAVY', shorts: true },
@@ -64,21 +64,21 @@ function makeKidLook(hasBackpack) {
 }
 
 // How far a student stands from a flower's stem to pick it from a crouch,
-// and from the middle of the ram to pet him, in art pixels.
-const KID_PICK_PX = 5;
-const KID_PET_PX  = 17;
-// Arm frames for taking hold of a bloom while standing, lowest first.
-const KID_REACH_ARMS = ['hold', 'reach', 'up'];
+// and from the middle of the ram to pet him (to the side, and nearer the
+// front), in blocks.
+const KID_PICK_DIST = 0.8;   // (for a full-size person; scaled to the student)
+const KID_PET_X = 0.95;
+const KID_PET_WY = 0.03;
 
 // Kid class manages each child's lifecycle (enter/wander/pickFlower/petting/return/done),
 // randomized appearance, flower-picking mechanics, and ram-petting interactions.
 class Kid {
-  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+  static g3 = true;      // drawn as a 3D model (see docs/GARDEN_3D.md)
 
   constructor() {
     // start on the threshold of one of the main doors
     this.wx = PEOPLE.doorX();
-    this.wy = PEOPLE.DOOR_WY + 0.008;
+    this.wy = PEOPLE.DOOR_IN_WY;
     this.twx = random(0.1, 0.9);
     this.twy = random(0.15, 0.85);
     this.speed = random(0.0016, 0.0028);
@@ -93,14 +93,13 @@ class Kid {
     // appearance — random per kid
     this.look = makeKidLook(false);
     this.seed = floor(random(1000));   // staggers blinking and patting
-    this.fade = 0;                     // fades in while stepping out of the school
     this.heldFlower = null;  // { hsl, type } when carrying
     this.pickTimer = 0;
     this.pickTarget = null;  // the flower this student is going to pick
     this.pickSide = 1;       // which way they face to pick it
     this.ramReactTimer = 0;
     this.entering = false;   // true for the last steps in through the doors
-    this.emerging = true;    // true for the first steps out of the doors, seen from the front
+    this.emerging = true;    // true for the first steps out of the doors, toward us
   }
 
   // Speech bubble that floats just above this student's head (and stays
@@ -110,27 +109,27 @@ class Kid {
   }
 
   // How this student will take a flower as it stands right now. A flower
-  // with a bloom is picked standing up, hand on the near side of the bloom
-  // (the lowest one of a group plant); a bud or a stub is picked from a
-  // crouch at the foot of the stem. Returns { crouch, arm, x, wy }: the arm
-  // frame, the art x to stand at and the world y.
+  // with a bloom is picked standing up, hand on the stem just under the
+  // bloom or as high as the arm goes (the lowest bloom of a group plant); a
+  // bud or a stub is picked from a crouch at the foot of the stem. Returns
+  // { crouch, arm, wx, wy, x, z }: the arm pose, where to stand, and the
+  // point (blocks) the hand goes to.
   pickPlan(f) {
+    const L = this.look;
     const wy = min(f.wy + 0.006, 0.99);
-    const foot = f.footPos();
-    if (f.height() <= 12) {
-      return { crouch: true, arm: 'pick', x: foot.x - this.pickSide * KID_PICK_PX, wy };
+    const i = max(0, (f.blooms || 1) - 1);
+    const foot = PEOPLE3.foot3(f), head = PEOPLE3.head3(f, i), r = PEOPLE3.bloomR(f, i);
+    if (head.y + r <= 0.8) {
+      const x = foot.x - this.pickSide * KID_PICK_DIST * PEOPLE3.scale(L);
+      return { crouch: true, arm: 'pick', wx: 0.5 + x / G3.GW, wy, x: foot.x, z: foot.z };
     }
-    const b = f.headPos(f.blooms - 1);
-    // the hand goes as near the middle of the bloom as an arm can get
-    const shoulder = worldToPx(f.wx, wy).y - this.look.h;
-    let arm = KID_REACH_ARMS[0], best = Infinity;
-    for (const a of KID_REACH_ARMS) {
-      const miss = abs(PEOPLE.handY(shoulder, this.look, a) - b.y);
-      if (miss < best) { best = miss; arm = a; }
-    }
-    // stand so the fingertips are on the edge of the petals
-    const reach = PEOPLE.HANDS.kidArm[arm][0] + 1;
-    return { crouch: false, arm, x: b.x - this.pickSide * (reach + max(2, b.r - 2)), wy };
+    // the hand goes to the lower edge of the bloom, or as near as an arm can get
+    const sh = PEOPLE3.shoulderY(L), reach = PEOPLE3.armReach(L);
+    const ty = constrain(head.y - r * 0.8, sh - reach * 0.5, sh + reach * 0.85);
+    const out = sqrt(max(0.02, reach * reach - (ty - sh) * (ty - sh)));
+    const sx = lerp(foot.x, head.x, constrain(ty / max(0.1, head.y), 0, 1));   // the stem at that height
+    const x = sx - this.pickSide * (out + 0.08);
+    return { crouch: false, arm: atan2(out, sh - ty), wx: 0.5 + x / G3.GW, wy, x: sx, z: foot.z };
   }
 
   // Takes one step toward (tx, ty) at the given speed and returns how far
@@ -143,7 +142,7 @@ class Kid {
     const st = min(speed, d);
     this.wx += (dx / d) * st;
     this.wy += (dy / d) * st;
-    if (abs(dx) * PX.W > 1) this.dir = dx > 0 ? 1 : -1;
+    if (abs(dx) * G3.GW > 0.06) this.dir = dx > 0 ? 1 : -1;
     if (avoid) {
       // (each student is 'kid_<index>' in characterPositions, see sketch.js)
       const sep = getSeparation(this.wx, this.wy, 'kid_' + kids.indexOf(this));
@@ -155,7 +154,6 @@ class Kid {
 
   // Advances the kid's state machine each frame: walking, flower picking, petting, and return to school.
   update() {
-    if (this.fade < 1) this.fade = min(1, this.fade + 0.06);
     const fromX = this.wx, fromY = this.wy;
 
     if (this.state === 'enter') {
@@ -205,8 +203,8 @@ class Kid {
               // Stay on the side of the flower they are already on, unless
               // the bloom they will take hangs out to one side of a group
               // plant: then they go round to that side of it.
-              const lean = f.headPos(f.blooms - 1).x - f.footPos().x;
-              this.pickSide = abs(lean) > 2 ? (lean > 0 ? -1 : 1) : (f.wx >= this.wx ? 1 : -1);
+              const lean = PEOPLE3.head3(f, max(0, (f.blooms || 1) - 1)).x - PEOPLE3.foot3(f).x;
+              this.pickSide = abs(lean) > 0.15 ? (lean > 0 ? -1 : 1) : (f.wx >= this.wx ? 1 : -1);
               this.state = 'approachFlower';
               break;
             }
@@ -240,7 +238,7 @@ class Kid {
       // Stop where the hand will reach it (see pickPlan), a touch nearer
       // the front so the student is drawn in front of the flower.
       const plan = this.pickPlan(f);
-      if (this.stepToward(plan.x / PX.W, plan.wy, this.speed, false) < 0.002) {
+      if (this.stepToward(plan.wx, plan.wy, this.speed, false) < 0.002) {
         this.dir = this.pickSide;
         this.state = 'pickFlower';
         this.pickPose = plan;
@@ -251,8 +249,8 @@ class Kid {
       if (!ram || weatherState === 'stormy') { this.state = 'wander'; return; }
       // walk up to whichever side of him is nearer
       const side = this.wx <= ram.wx ? -1 : 1;
-      const tx = ram.wx + side * KID_PET_PX / PX.W;
-      const ty = ram.wy + 0.03;
+      const tx = ram.wx + side * KID_PET_X / G3.GW;
+      const ty = ram.wy + KID_PET_WY;
       if (this.stepToward(tx, ty, this.speed * 1.2, false) < 0.012) {
         this.state = 'petting';
         this.dir = -side;
@@ -269,8 +267,8 @@ class Kid {
       // stay at his side and a little in front, facing him, so the
       // outstretched hand lands on his wool
       if (ram) {
-        this.wx = lerp(this.wx, ram.wx - this.dir * KID_PET_PX / PX.W, 0.15);
-        this.wy = lerp(this.wy, ram.wy + 0.03, 0.15);
+        this.wx = lerp(this.wx, ram.wx - this.dir * KID_PET_X / G3.GW, 0.15);
+        this.wy = lerp(this.wy, ram.wy + KID_PET_WY, 0.15);
       }
       // delayed ram reaction so it doesn't overlap kid's speech
       if (this.ramReactTimer > 0) {
@@ -315,45 +313,56 @@ class Kid {
     }
   }
 
-  // Draws the student: walking, standing, crouching to pick, carrying a flower or petting the ram.
+  // Poses the student's model: walking, standing, crouching or reaching to
+  // pick, carrying a flower or petting the ram.
   draw() {
     if (this.state === 'done') return;
-    const { x, y } = worldToPx(this.wx, this.wy);
     const s = this.state, L = this.look;
-    const walking = (s === 'wander' || s === 'enter' || s === 'return' || s === 'carry' ||
-                     s === 'approachFlower' || s === 'approachPet');
-    let leg = walking ? PEOPLE.walkFrame(this.walkPhase) : 'stand';
-    let arm = 'walk';
-    if (this.entering) leg = PEOPLE.backFrame(this.walkPhase);   // seen from behind, going in
-    else if (this.emerging) leg = PEOPLE.frontFrame(this.walkPhase);   // seen from the front, coming out
-    else if (s === 'pickFlower') {
+    const m = PEOPLE3.model(this, this.emerging ? 0 : this.dir * G3.YAW.right);
+    const u = m.userData;
+    const x = (this.wx - 0.5) * G3.GW, z = this.wy * G3.GD;
+
+    // Facing: the way they walk; at the flower or the ram while busy with
+    // it; standing about, mostly toward us
+    let yaw = this.dir * 0.6, force = false, side = null;
+    let arm = 'walk', crouch = false, look = 0;
+    if (s === 'pickFlower' && this.pickPose) {
       const plan = this.pickPose;
-      if (!plan || plan.crouch) { leg = 'crouch'; arm = 'pick'; }
-      else arm = plan.arm;    // standing, hand on the bloom
+      side = this.pickSide > 0 ? 'R' : 'L';
+      yaw = PEOPLE3.aimYaw(x, z, plan.x, plan.z, side, L);
+      force = true;
+      arm = plan.arm;
+      crouch = plan.crouch;
+    } else if (s === 'petting' && ram) {
+      side = this.dir > 0 ? 'R' : 'L';
+      yaw = PEOPLE3.aimYaw(x, z, (ram.wx - 0.5) * G3.GW, ram.wy * G3.GD, side, L);
+      force = true;
+      arm = 1.2 + 0.28 * sin((G3.frame + this.seed) * 0.3);   // pat, pat
+      look = side === 'R' ? -0.5 : 0.5;                       // looking round at us
     }
-    else if (s === 'petting') arm = PX.anim(2, 10, this.seed) ? 'reach' : 'hold';   // pat, pat
-    else if (this.heldFlower) arm = 'carry';
+    const moving = PEOPLE3.move(m, this.wx, this.wy, { yaw, force });
+    if (!side) side = PEOPLE3.nearSide(m);
 
-    // Fade through the school doors on the way back in
-    const alpha = min(this.fade, PEOPLE.doorAlpha(this));
-    if (alpha <= 0.02) return;
-
-    const c = PX.c, prevAlpha = c.globalAlpha;
-    c.globalAlpha = prevAlpha * alpha;
-    PX.shadow(x, y, 11);
-    PEOPLE.draw(x, y, L, this.dir, leg, arm, PEOPLE.face(PX.tick, this.seed, 'smile'));
-    // Held flower — its stem sits in the hand held out in front
-    if (this.heldFlower && !this.entering) {
-      const top = PEOPLE.top(y, L, leg);
-      PEOPLE.tinyFlower(PEOPLE.handX(x, this.dir, L, 'carry'), PEOPLE.handY(top, L, 'carry'), this.heldFlower.hsl);
+    // Held flower: its stem in the hand held out in front
+    if (this.heldFlower) {
+      if (!u.flower) {
+        u.flower = PEOPLE3.tinyFlower(this.heldFlower.hsl);
+        u.flower.scale.setScalar(1 / u.s);
+        u.flower.position.set(0, -0.02, 0.1);
+      }
+      PEOPLE3.hold(m, u.flower, side);
+      arm = 'carry';
     }
-    c.globalAlpha = prevAlpha;
+    PEOPLE3.pose(m, {
+      walk: moving ? this.walkPhase : null, side, arm, crouch, look,
+      face: PEOPLE.face(G3.frame, this.seed, 'smile'),
+    });
   }
 }
 
 // An arrival/departure kid that walks to/from the school with a backpack
 class ArrivalKid {
-  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+  static g3 = true;      // drawn as a 3D model (see docs/GARDEN_3D.md)
 
   constructor(departing) {
     this.departing = departing || false;
@@ -367,17 +376,15 @@ class ArrivalKid {
     // Random appearance, always with a backpack
     this.look = makeKidLook(true);
     this.seed = floor(random(1000));
-    this.fade = 1;
 
     if (this.departing) {
       // out of the doors and away across the lawn
       this.wx = PEOPLE.doorX();
-      this.wy = PEOPLE.DOOR_WY + 0.008;
+      this.wy = PEOPLE.DOOR_IN_WY;
       this.twx = this.fromLeft ? -0.08 : 1.08;
       this.twy = random(0.3, 0.7);
       this.dir = this.twx < 0.5 ? -1 : 1;
-      this.fade = 0;   // fades in coming out of the doors
-      this.emerging = true;   // first steps out, seen from the front
+      this.emerging = true;   // first steps out of the doors, toward us
     } else {
       this.wx = this.fromLeft ? -0.08 : 1.08;
       this.wy = random(0.3, 0.7);
@@ -386,7 +393,6 @@ class ArrivalKid {
 
   // Walks toward the target position; marks done on arrival
   update() {
-    if (this.fade < 1) this.fade = min(1, this.fade + 0.06);
     const fromX = this.wx, fromY = this.wy;
     if (this.departing) {
       const dx = this.twx - this.wx;
@@ -407,47 +413,37 @@ class ArrivalKid {
     this.walkPhase += walkStride(this.wx - fromX, this.wy - fromY, PEOPLE.STRIDE_KID);
   }
 
-  // Draws the student walking with a backpack; arrivals fade as they go in through the doors
+  // Poses the student walking with a backpack: in at the doors, or out of them and away
   draw() {
-    const { x, y } = worldToPx(this.wx, this.wy);
-    const alpha = min(this.fade, PEOPLE.doorAlpha(this));
-    if (alpha <= 0.02) return;
-    const c = PX.c, prevAlpha = c.globalAlpha;
-    c.globalAlpha = prevAlpha * alpha;
-    PX.shadow(x, y, 11);
-    const leg = this.entering ? PEOPLE.backFrame(this.walkPhase)
-              : this.emerging ? PEOPLE.frontFrame(this.walkPhase)
-              : PEOPLE.walkFrame(this.walkPhase);
-    PEOPLE.draw(x, y, this.look, this.dir, leg, 'walk', PEOPLE.face(PX.tick, this.seed, 'smile'));
-    c.globalAlpha = prevAlpha;
+    const m = PEOPLE3.model(this, this.emerging ? 0 : this.dir * G3.YAW.right);
+    const moving = PEOPLE3.move(m, this.wx, this.wy);
+    PEOPLE3.pose(m, { walk: moving ? this.walkPhase : null, face: PEOPLE.face(G3.frame, this.seed, 'smile') });
   }
 }
 
-// I SPY card: three different students bunched together like a class
-// photo, no wider than 44 art pixels so the card can use its big text. The
-// two at the back stand a little higher and are drawn first; the one in
-// the middle stands in front holding up a flower.
-CARD_ART.kids = (x, y, tick) => {
-  const P = PEOPLE;
-  const looks = CARD_ART._kidLooks || (CARD_ART._kidLooks = [
+// I SPY card: three different students side by side like a class photo:
+// one waving, one holding up a flower, one with a cap and a backpack.
+G3.cardArt('kids', () => {
+  const P = PEOPLE, g = new THREE.Group();
+  const looks = [
     P.look({ kind: 'kid', skin: 2, hair: 'bob', hairCol: P.BLACK, top: P.BRIGHTS[7], stripe: PAL.white,
              sleeves: 'short', bottom: P.JEANS, legs: 'skin', height: 1 }),
     P.look({ kind: 'kid', skin: 4, hair: 'curly', hairCol: P.BLACK, top: P.BRIGHTS[2],
              sleeves: 'short', bottom: P.NAVY, height: -1 }),
     P.look({ kind: 'kid', skin: 0, hair: 'swoop', hairCol: P.GINGER, top: P.BRIGHTS[3],
              sleeves: 'short', bottom: P.KHAKI, cap: P.BRIGHTS[0], pack: P.BRIGHTS[5] }),
-  ]);
-  // back left: waves hello every few seconds
-  const waving = tick % 240 < 90;
-  PX.shadow(x - 12, y - 2, 11);
-  P.draw(x - 12, y - 2, looks[0], 1, 'stand', waving ? (Math.floor(tick / 10) % 2 ? 'wave1' : 'wave2') : 'down',
-         P.face(tick, 1, 'smile'));
-  // back right: cap and backpack, facing the others
-  PX.shadow(x + 13, y - 2, 11);
-  P.draw(x + 13, y - 2, looks[2], -1, 'stand', 'down', P.face(tick, 3, 'smile'));
-  // front and middle: holds up a flower, bouncing on their toes
-  const hop = Math.floor(tick / 14) % 6 === 0 ? 1 : 0;
-  PX.shadow(x, y, 11);
-  P.draw(x, y - hop, looks[1], 1, 'stand', 'carry', P.face(tick, 2, 'smile'));
-  P.tinyFlower(P.handX(x, 1, looks[1], 'carry'), P.handY(P.top(y - hop, looks[1], 'stand'), looks[1], 'carry'), [320, 80, 68]);
-};
+  ];
+  const a = PEOPLE3.build(looks[0]), b = PEOPLE3.build(looks[1]), c = PEOPLE3.build(looks[2]);
+  a.position.set(-0.85, 0, -0.1);
+  b.position.set(0, 0, 0.25);
+  c.position.set(0.85, 0, -0.1);
+  c.rotation.y = -0.5;
+  PEOPLE3.pose(a, { side: 'R', arm: 'wave', arm2: 'down', t: 2, snap: true });
+  const flower = PEOPLE3.hold(b, PEOPLE3.tinyFlower([320, 80, 68]), 'L');
+  flower.scale.setScalar(1 / b.userData.s);
+  flower.position.set(0, -0.02, 0.1);
+  PEOPLE3.pose(b, { side: 'L', arm: 'hold', arm2: 'down', snap: true });
+  PEOPLE3.pose(c, { arm: 'down', arm2: 'down', snap: true });
+  g.add(a, b, c);
+  return g;
+});

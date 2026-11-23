@@ -1353,88 +1353,69 @@ PX.define('teacherCup', {
 // ── Walking pace ──────────────────────────────────────
 // How far to advance a walk cycle (in radians; a full cycle is two steps)
 // for a move of (dwx, dwy) world units, so that feet plant on the grass
-// instead of sliding over it. cyclePx is how many art pixels the character
-// covers in one whole cycle. Moving up or down the lawn covers few pixels,
-// so there is a slowest pace to keep the legs going.
+// instead of sliding over it. cyclePx is how far the character covers in
+// one whole cycle, in texels (sixteenths of a block; the old art pixels
+// were about the same size). There is a slowest pace to keep the legs going.
 function walkStride(dwx, dwy, cyclePx) {
-  const d = Math.hypot(dwx * PX.W, dwy * (PX.H - PX.HOR));
+  const d = Math.hypot(dwx * G3.GW, dwy * G3.GD) * 16;
   if (d < 0.02) return 0;
   return Math.max(0.1, Math.min(0.55, Math.PI * 2 * d / cyclePx));
 }
 
-// ── PEOPLE: looks and the layered drawing ─────────────
+// ── PEOPLE: looks, the school doors and speech ────────
+// (The 3D models are built from these looks by PEOPLE3 in js/g3_people.js.)
 const PEOPLE = {
-  // Art pixels covered in one walk cycle (two steps)
-  STRIDE_KID: 30, STRIDE_ADULT: 38,
+  // Texels covered in one walk cycle (two steps)
+  STRIDE_KID: 26, STRIDE_ADULT: 34,
 
-  // The main entrance. People going inside walk along the sidewalk to a
-  // spot in front of one of the two pairs of doors (DOOR_FRONT_WY), turn
-  // their backs and step in to the threshold (DOOR_WY), fading as they go.
+  // The main entrance: two doorways side by side in the front wall of the
+  // school (z = 0), one either side of wx = 0.5. People going inside walk
+  // along the sidewalk to a spot in front of a doorway (DOOR_FRONT_WY),
+  // turn and walk in over the threshold (DOOR_WY) into the dark inside
+  // (DOOR_IN_WY, behind the wall), where they are gone. People coming out
+  // start there and walk straight out to the sidewalk.
   DOOR_WY: 0.024,
   DOOR_FRONT_WY: 0.07,
-  // World x of the middle of a pair of doors: the pair on the side the
-  // person is coming from (or either, when no position is given).
+  DOOR_IN_WY: -0.045,
+  // World x of the middle of a doorway: the one on the side the person is
+  // coming from (or either, when no position is given). 0.6 to 0.8 blocks
+  // from the middle of the building, so shoulders clear the door posts.
   doorX(fromWx) {
     const side = fromWx === undefined ? (Math.random() < 0.5 ? -1 : 1) : (fromWx < 0.5 ? -1 : 1);
-    return 0.5 + side * (9 + Math.floor(Math.random() * 6)) / PX.W;
+    return 0.5 + side * (0.6 + Math.random() * 0.2) / G3.GW;
   },
   // Moves a character (anything with wx, wy, dir) one step on its way in at
-  // the doors. Sets ch.entering once it has turned to walk in (draw it with
-  // the 'b0'/'b1' back frames then). Returns true when it is inside.
+  // the doors. Sets ch.entering once it has turned to walk in. Returns true
+  // when it is inside.
   goIn(ch, speed) {
     if (ch.doorWx === undefined) ch.doorWx = this.doorX(ch.wx);
     if (!ch.entering) {
       const dx = ch.doorWx - ch.wx, dy = this.DOOR_FRONT_WY - ch.wy;
       const d = Math.hypot(dx, dy);
-      if (Math.hypot(dx * PX.W, dy * (PX.H - PX.HOR)) < 1.5) {
+      if (Math.hypot(dx * G3.GW, dy * G3.GD) < 0.1) {            // within a tenth of a block
         ch.entering = true;
         ch.wx = ch.doorWx;
       } else {
         const st = Math.min(speed, d);
         ch.wx += dx / d * st;
         ch.wy += dy / d * st;
-        if (Math.abs(dx) * PX.W > 1) ch.dir = dx > 0 ? 1 : -1;
+        if (Math.abs(dx) * G3.GW > 0.06) ch.dir = dx > 0 ? 1 : -1;
       }
       return false;
     }
     ch.wy -= Math.max(0.0012, speed * 0.6);
-    return ch.wy <= this.DOOR_WY;
+    return ch.wy <= this.DOOR_IN_WY;
   },
-  // The other way round: someone who starts on the threshold (set
-  // ch.emerging = true when you put them there) walks straight out toward
-  // us to the sidewalk before turning to go where they are going. Draw
-  // them with the 'f0'/'f1' front frames while this returns true.
+  // The other way round: someone who starts inside the doorway (put them
+  // at DOOR_IN_WY and set ch.emerging = true) walks straight out toward us
+  // to the sidewalk before turning to go where they are going. Returns
+  // true while they are still on their way out.
   comeOut(ch, speed) {
     if (!ch.emerging) return false;
     ch.wy += Math.max(0.0012, speed * 0.6);
     ch.walkPhase += 0.22;            // a brisk little march down the step
     if (ch.wy >= this.DOOR_FRONT_WY) ch.emerging = false;
     return true;
-  },
-  // Body frame for someone walking out of the doors, from their walk phase.
-  frontFrame(phase) {
-    return Math.floor(phase / Math.PI) % 2 === 0 ? 'f0' : 'f1';
-  },
-  // Opacity of someone on their way in: solid until the last few steps.
-  doorAlpha(ch) {
-    if (!ch.entering) return 1;
-    return Math.max(0, Math.min(1, (ch.wy - this.DOOR_WY) / 0.03));
-  },
-  // Body frame for someone walking in at the doors, from their walk phase.
-  backFrame(phase) {
-    return Math.floor(phase / Math.PI) % 2 === 0 ? 'b0' : 'b1';
-  },
-  // Which back-of-the-head shape goes with each hairstyle
-  BACK_HAIR: {
-    short: 'backShort', buzz: 'backShort', neat: 'backShort', swoop: 'backShort',
-    curly: 'backBob', bob: 'backBob', long: 'backLong', pony: 'backPony',
-    bun: 'backBun', fringe: 'backFringe',
-  },
-  // and which front view
-  FRONT_HAIR: {
-    short: 'frontShort', buzz: 'frontShort', neat: 'frontShort', swoop: 'frontShort',
-    curly: 'frontCurly', bob: 'frontBob', long: 'frontLong', pony: 'frontPony',
-    bun: 'frontBun', fringe: 'frontFringe',
   },
 
   // Speech bubble for someone who may leave while it is still showing.
@@ -1508,226 +1489,58 @@ const PEOPLE = {
     PX.ramp(0, 50, 46),     // brick red
   ],
 
-  // Where the hand is in each arm frame, as [column offset, row offset]
-  // from the person's x and the top of their shoulders (facing right).
-  // (`carry` is the point just in front of the fist where the bottom of
-  // the tiny flower's stem goes.)
-  HANDS: {
-    adultArm: { down: [-3, 9], fwd: [0, 8], back: [-6, 8], hold: [4, 4], lift: [5, -6], wave1: [-6, -5], wave2: [-4, -6] },
-    kidArm: { down: [-3, 6], fwd: [-1, 5], back: [-5, 5], hold: [4, 3], carry: [6, 8], reach: [4, 1], up: [4, -3], pick: [1, 6], wave1: [-6, -5], wave2: [-4, -5] },
-  },
-
-  _o: { frame: 0, flip: false, pal: null },   // reused options object for PX.spr
-
   // Describes one person. Every field is optional:
   //   kind     'adult' (shirt and trousers) | 'skirt' | 'kid' | 'gardener'
-  //   skin     0..5 index into SKIN         hair     hairstyle frame name, or null for bald
+  //   skin     0..5 index into SKIN         hair     hairstyle name, or null for bald:
+  //                                         short buzz neat swoop curly bob long pony bun fringe
   //   hairCol  index into HAIR              top      cloth for the shirt or jacket
   //   bottom   cloth for trousers or skirt  legs     cloth for the lower leg, or 'skin'
   //   sleeves  'long' | 'short'             collar, tie, belt, stripe, shoes: colours
   //   beard    index into HAIR              cap      cloth for a baseball cap
   //   pack     cloth for a backpack         sunHat   true for the straw hat
-  //   height   students only: -1 short, 0, 1 tall
-  // The result holds ready-made palettes, so nothing is allocated per frame.
+  //   glasses  colour of the frames         height   students only: -1 short, 0, 1 tall
+  // PEOPLE3.build(look) makes the 3D model.
   look(spec) {
     const kind = spec.kind || 'adult';
-    const skin = this.SKIN[spec.skin === undefined ? 1 : spec.skin];
-    const top = spec.top || this.WHITE;
-    const bottom = spec.bottom || this.JEANS;
-    const legs = spec.legs === 'skin' ? { m: skin.k, d: skin.K } : (spec.legs || bottom);
-    const L = {
+    const skinIdx = spec.skin === undefined ? 1 : spec.skin;
+    const skin = this.SKIN[skinIdx];
+    const gardener = kind === 'gardener';
+    const top = gardener ? { m: PAL.pi2, d: PAL.pi3, l: PAL.pi1 } : (spec.top || this.WHITE);
+    const bottom = gardener ? { m: PAL.pi1, d: PAL.pi2, l: PAL.white } : (spec.bottom || this.JEANS);
+    return {
       kind,
-      body: { adult: 'adultBody', skirt: 'adultSkirtBody', kid: 'kidBody', gardener: 'gardenerBody' }[kind],
-      arm: kind === 'kid' ? 'kidArm' : 'adultArm',
-      h: kind === 'kid' ? 14 : 21,          // rows from the shoulders to the ground
-      tall: kind === 'kid' ? 23 : 30,       // rows from the top of the head to the ground
-      farDx: kind === 'adult' ? 5 : 4,      // how far along the far arm's shoulder is
+      skinIdx,
       skinPal: skin,
       hair: spec.hair || null,
       hairPal: this.HAIR[spec.hairCol === undefined ? this.BROWN : spec.hairCol],
-      bald: !spec.hair || spec.hair === 'fringe',
-      beardPal: spec.beard === undefined ? null : { b: this.HAIR[spec.beard].h, m: PAL.white },
       shinePal: { i: PX.mix(skin.k, PAL.white, 0.45) },
-      capPal: spec.cap ? { a: spec.cap.m, A: spec.cap.d } : null,
-      packPal: spec.pack ? { a: spec.pack.m, A: spec.pack.d, z: spec.pack.l } : null,
+      beardCol: spec.beard === undefined ? null : this.HAIR[spec.beard].h,
+      top,
+      bottom,
+      legs: gardener ? 'skin' : (spec.legs || null),       // 'skin' (shorts, bare legs), a cloth (tights), or null
+      sleeves: gardener ? 'short' : (spec.sleeves || 'long'),
+      collar: spec.collar || null,
+      tie: spec.tie || null,
+      belt: spec.belt || bottom.d,
+      stripe: spec.stripe || null,
+      shoes: spec.shoes || (gardener ? PAL.wo4 : PAL.wo3),
+      cap: spec.cap || null,
+      pack: spec.pack || null,
       sunHat: !!spec.sunHat,
-      bodyPal: null,
-      armPal: null,
+      glasses: spec.glasses || null,
+      height: kind === 'kid' ? (spec.height || 0) : 0,
     };
-    if (kind === 'kid' && spec.height) {
-      L.body = spec.height > 0 ? 'kidBodyTall' : 'kidBodySmall';
-      L.h += spec.height > 0 ? 2 : -1;
-      L.tall += spec.height > 0 ? 2 : -1;
-    }
-    if (kind === 'gardener') {
-      L.tall = 33;                          // her hat adds a little
-      L.bodyPal = { k: skin.k, K: skin.K };
-      L.armPal = { s: PAL.pi2, S: PAL.pi3, l: PAL.pi1, f: skin.k, k: skin.k };
-    } else {
-      L.bodyPal = {
-        s: top.m, S: top.d, l: top.l,
-        c: spec.collar || top.l, t: spec.tie || top.m, d: spec.stripe || top.m,
-        b: spec.belt || bottom.d, p: bottom.m, P: bottom.d, g: legs.m, G: legs.d,
-        x: spec.shoes || PAL.wo3,
-        // the back view has the arms painted in: f forearm, k hand
-        f: spec.sleeves === 'short' ? skin.k : top.m, k: skin.k,
-      };
-      L.armPal = { s: top.m, S: top.d, l: top.l, f: spec.sleeves === 'short' ? skin.k : top.m, k: skin.k };
-    }
-    return L;
-  },
-
-  // Art y of the top of the shoulders for a body frame (it dips on the
-  // contact frames of the walk and drops for a crouch).
-  top(y, L, leg) {
-    if (leg === 'crouch') return y - 10;
-    return y - L.h + (leg === 'w0' || leg === 'w2' ? 1 : 0);
   },
 
   // Art-pixel point just above someone's head, for speech bubbles.
-  // extra lifts it further (an umbrella, say).
+  // extra (blocks) lifts it further (over an umbrella, say).
   bubblePos(wx, wy, L, extra) {
-    const p = worldToPx(wx, wy);
-    return { x: p.x, y: p.y - L.tall - 2 - (extra || 0) };
-  },
-
-  // Walk frame name from a walk phase in radians (one cycle = two steps).
-  walkFrame(phase) {
-    const TWO_PI = Math.PI * 2;
-    const p = ((phase % TWO_PI) + TWO_PI) % TWO_PI;
-    return 'w' + (Math.floor(p / (Math.PI / 2)) % 4);
-  },
-
-  // Art pixel of the hand for an arm frame; props are drawn from here.
-  // Returns the pixel column (already mirrored when facing left).
-  handX(x, dir, L, arm) {
-    const h = this.HANDS[L.arm][arm] || this.HANDS[L.arm].down;
-    return dir < 0 ? x - 1 - h[0] : x + h[0];
-  },
-  handY(top, L, arm) {
-    const h = this.HANDS[L.arm][arm] || this.HANDS[L.arm].down;
-    return top + h[1];
-  },
-
-  _spr(name, x, y, frame, flip, pal) {
-    const o = this._o;
-    o.frame = frame; o.flip = flip; o.pal = pal;
-    PX.spr(name, x, y, o);
-  },
-
-  // Draws a person standing on art pixel (x, y).
-  //   dir   1 facing right, -1 facing left
-  //   leg   body frame: 'stand', 'w0'..'w3', 'crouch' (students only), or
-  //         'back', 'b0', 'b1' for the view from behind, or 'front', 'f0',
-  //         'f1' for the view from the front (arm and face are then ignored)
-  //   arm   'walk' to swing with the legs, or an arm frame name
-  //   face  'smile' | 'blink' | 'open' | 'flat'
-  //   alpha 0..1 for fading in and out at the school door
-  draw(x, y, L, dir, leg, arm, face, alpha) {
-    const c = PX.c, prevAlpha = c.globalAlpha;
-    if (alpha !== undefined && alpha < 1) {
-      if (alpha <= 0.02) return;
-      c.globalAlpha = prevAlpha * alpha;
-    }
-    x = Math.round(x); y = Math.round(y);
-    const flip = dir < 0;
-    const top = this.top(y, L, leg);
-    if (leg === 'back' || leg === 'b0' || leg === 'b1') {
-      this._drawBack(x, y, L, leg, top);
-      c.globalAlpha = prevAlpha;
-      return;
-    }
-    if (leg === 'front' || leg === 'f0' || leg === 'f1') {
-      this._drawFront(x, y, L, leg, top);
-      c.globalAlpha = prevAlpha;
-      return;
-    }
-
-    // Arms swing opposite to the legs. The far arm is drawn first so it
-    // only shows where it swings out past the body.
-    let near = arm, far = null;
-    if (arm === 'walk') {
-      near = leg === 'w0' ? 'back' : leg === 'w2' ? 'fwd' : 'down';
-      far = leg === 'w0' ? 'fwd' : leg === 'w2' ? 'back' : null;
-    }
-    if (far) this._spr(L.arm, x + dir * L.farDx, top, far, flip, L.armPal);
-    if (L.packPal) this._spr('kidBackpack', x, top, 'pack', flip, L.packPal);
-
-    this._spr(L.body, x, y, leg, flip, L.bodyPal);
-    if (L.packPal) this._spr('kidBackpack', x, top, 'strap', flip, L.packPal);
-
-    // The head overlaps the shoulder line by one row; it leans forward in a crouch
-    const hx = x + (leg === 'crouch' ? dir : 0), hy = top + 1;
-    this._spr('peopleHead', hx, hy, face || 'smile', flip, L.skinPal);
-    if (L.bald) this._spr('peopleHeadwear', hx, hy, 'shine', flip, L.shinePal);
-    if (L.hair) this._spr('peopleHair', hx, hy, L.hair, flip, L.hairPal);
-    if (L.beardPal) this._spr('peopleHeadwear', hx, hy, 'beard', flip, L.beardPal);
-    if (L.capPal) this._spr('peopleHeadwear', hx, hy, 'cap', flip, L.capPal);
-    if (L.sunHat) this._spr('gardenerHat', hx, hy, 0, flip, null);
-
-    this._spr(L.arm, x, top, near, flip, L.armPal);
-    c.globalAlpha = prevAlpha;
-  },
-
-  // The view from behind: no face, hair right across the head, an arm at
-  // each side (painted into the body frame) and the backpack square-on.
-  _drawBack(x, y, L, leg, top) {
-    if (L.kind === 'gardener') {
-      // her dress looks much the same from behind
-      this._spr(L.body, x, y, 'stand', false, L.bodyPal);
-      this._spr(L.arm, x, top, 'down', false, L.armPal);
-      this._spr(L.arm, x, top, 'down', true, L.armPal);
-    } else {
-      this._spr(L.body, x, y, leg, false, L.bodyPal);
-    }
-    if (L.packPal) this._spr('kidBackpackBack', x, top + 1, 0, false, L.packPal);
-    const hy = top + 1;
-    this._spr('peopleHead', x, hy, 'back', false, L.skinPal);
-    if (L.bald && !L.hair) this._spr('peopleHeadwear', x, hy, 'shine', false, L.shinePal);
-    if (L.hair) this._spr('peopleHair', x, hy, this.BACK_HAIR[L.hair] || 'backShort', false, L.hairPal);
-    if (L.capPal) this._spr('peopleHeadwear', x, hy, 'capBack', false, L.capPal);
-    if (L.sunHat) this._spr('gardenerHat', x, hy, 0, false, null);
-  },
-
-  // The view from the front, for stepping out of the school doors: both
-  // eyes, hair either side of the face, an arm at each side and only the
-  // straps of a backpack showing.
-  _drawFront(x, y, L, leg, top) {
-    if (L.kind === 'gardener') {
-      this._spr(L.body, x, y, 'stand', false, L.bodyPal);
-      this._spr(L.arm, x, top, 'down', false, L.armPal);
-      this._spr(L.arm, x, top, 'down', true, L.armPal);
-    } else {
-      this._spr(L.body, x, y, leg, false, L.bodyPal);
-    }
-    if (L.packPal) {
-      PX.rect(x - 2, top + 1, 1, 4, L.packPal.A);
-      PX.rect(x + 2, top + 1, 1, 4, L.packPal.A);
-    }
-    const hy = top + 1;
-    this._spr('peopleHead', x, hy, 'front', false, L.skinPal);
-    if (L.bald && !L.hair) this._spr('peopleHeadwear', x, hy, 'shine', false, L.shinePal);
-    if (L.hair) this._spr('peopleHair', x, hy, this.FRONT_HAIR[L.hair] || 'frontShort', false, L.hairPal);
-    if (L.beardPal) this._spr('peopleHeadwear', x, hy, 'beardFront', false, L.beardPal);
-    if (L.capPal) this._spr('peopleHeadwear', x, hy, 'capFront', false, L.capPal);
-    if (L.sunHat) this._spr('gardenerHat', x, hy, 0, false, null);
+    return G3.artAt(wx, wy, PEOPLE3.headTop(L) + 0.3 + (extra || 0));
   },
 
   // Everyone blinks now and then. Returns 'blink' for a few frames out of
   // every few seconds (seed staggers people), otherwise the face given.
   face(tick, seed, base) {
     return (tick + seed * 37) % 190 < 6 ? 'blink' : (base || 'smile');
-  },
-
-  // A stand-in hand-held flower, used until flowers.js provides
-  // drawTinyFlower(). (x, y) is the bottom of the stem.
-  tinyFlower(x, y, hsl) {
-    if (typeof drawTinyFlower === 'function') { drawTinyFlower(x, y, hsl); return; }
-    const col = hsl ? PX.hsl(hsl[0], hsl[1], hsl[2]) : PAL.pi2;
-    PX.rect(x, y - 3, 1, 3, PAL.gr4);
-    PX.rect(x - 2, y - 7, 5, 5, PAL.ink);
-    PX.rect(x - 1, y - 7, 3, 5, col);
-    PX.rect(x - 2, y - 6, 5, 3, col);
-    PX.px(x, y - 5, PAL.ye2);
   },
 };

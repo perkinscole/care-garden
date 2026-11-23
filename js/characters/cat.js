@@ -5,21 +5,13 @@
 // Last Modified: November 22, 2026
 // Description: Defines the Cat character that wanders, sits, sleeps, stalks
 //   butterflies, pounces, and shelters from rain near the school.
-//   Drawn as pixel art from the 'cat...' sprites in js/art/animals_art.js.
+//   Drawn as a 3D box animal (ANIMALS3.cat in js/art/animals_art.js).
 // ================================================================
-
-// The three coats a cat can have. The sprites are drawn as an orange tabby;
-// the other two are recolours (c = fur, d = stripes, l = pale fur, g = eyes).
-const CAT_COATS = {
-  orange: null,
-  black:  { c: PAL.g5,  d: PAL.black, l: PAL.g4, g: PAL.ye2, p: PAL.g4 },
-  grey:   { c: PAL.sl1, d: PAL.sl2,   l: PAL.g1, g: PAL.black },
-};
 
 // Cat class manages the cat's state machine (wander/sit/stalk/pounce/sleep/shelter),
 // blinking, tail animation, butterfly hunting, and rain shelter behavior.
 class Cat {
-  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+  static g3 = true;      // drawn as a 3D box model (see docs/GARDEN_3D.md)
 
   constructor() {
     this.wx = random(0.1, 0.9);
@@ -40,7 +32,7 @@ class Cat {
     this.blinking = false;
     this.speechTimer = floor(random(400, 800));
     const pick = random();
-    this.coat = pick < 0.33 ? 'orange' : pick < 0.66 ? 'black' : 'grey';
+    this.coat = pick < 0.33 ? 'orange' : pick < 0.66 ? 'black' : 'grey';   // see ANIMALS3.CAT_COATS
     this.sheltering = false;
     this.sleepTimer = 0;
     this.zzPhase = 0;
@@ -61,12 +53,11 @@ class Cat {
 
   // Art-pixel point just above the cat's head, for speech bubbles.
   headPos() {
-    const p = worldToPx(this.wx, this.wy);
-    const s = this.state;
-    if (s === 'sit' || s === 'miss') return { x: p.x, y: p.y - 16 };
-    if (s === 'sleep') return { x: p.x, y: p.y - 10 };
-    if (s === 'sheltering' || s === 'stalk') return { x: p.x + this.dir * 5, y: p.y - 11 };
-    return { x: p.x + this.dir * 6, y: p.y - 16 };
+    const s = this.state, k = ANIMALS3.CAT_SIZE;
+    if (s === 'sit' || s === 'miss') return ANIMALS3.artAhead(this, 0.05 * k, 1.2 * k + 0.3);
+    if (s === 'sleep') return ANIMALS3.artAhead(this, 0.3 * k, 0.45 * k + 0.3);
+    if (s === 'sheltering' || s === 'stalk') return ANIMALS3.artAhead(this, 0.45 * k, 0.65 * k + 0.3);
+    return ANIMALS3.artAhead(this, 0.48 * k, 0.9 * k + 0.3);
   }
 
   // Shows a speech bubble over the cat's head.
@@ -261,63 +252,84 @@ class Cat {
     this.wy = constrain(this.wy, 0.04, 0.98);
   }
 
-  // Draws the cat in the pose for its state, plus floating "z"s when asleep.
+  // Poses the cat for its state, plus floating "z"s when asleep.
   draw() {
-    const { x, y } = worldToPx(this.wx, this.wy);
-    const opts = { flip: this.dir < 0, pal: CAT_COATS[this.coat], frame: 0 };
-    const tailFlick = sin(this.tailPhase) > 0.3;   // slow sway of the tail
+    const m = G3.model(this, () => ANIMALS3.cat(this.coat)), u = m.userData;
     const s = this.state;
+    const tailFlick = sin(this.tailPhase) > 0.3;   // slow sway of the tail
+    const pose = (s === 'sit') ? 'sit' : s === 'miss' ? 'lick' : s === 'sleep' ? 'sleep' :
+                 s === 'sheltering' ? 'loaf' : s === 'stalk' ? 'stalk' : s === 'pounce' ? 'pounce' : 'stand';
+    ANIMALS3.poseCat(m, pose, s === 'pounce' ? 0.45 : 0.16);
 
-    if (s === 'sit' || s === 'miss') {
-      if (s === 'miss') opts.frame = PX.anim(2, 14) === 0 ? 'lick0' : 'lick1';
-      else opts.frame = this.blinking ? 'blink' : (tailFlick ? 'sit1' : 'sit0');
-      PX.shadow(x, y, 12);
-      PX.spr('cat_sit', x, y, opts);
-
-    } else if (s === 'sleep') {
-      opts.frame = PX.anim(2, 50);
-      PX.shadow(x, y, 16);
-      PX.spr('cat_sleep', x, y, opts);
-      // two little z's drift up and fade, one after the other
-      for (let i = 0; i < 2; i++) {
-        const k = (this.zzPhase + i * 0.5) % 1;
-        PX.spr('zzz', x + this.dir * (5 + Math.round(k * 7)), y - 9 - Math.round(k * 13),
-          { frame: k > 0.45 ? 1 : 0, alpha: k < 0.6 ? 1 : 0.5 });
-      }
-
-    } else if (s === 'sheltering') {
-      opts.frame = this.blinking ? 'blink' : 'loaf';
-      PX.shadow(x, y, 16);
-      PX.spr('cat_loaf', x, y, opts);
-
-    } else if (s === 'stalk') {
-      opts.frame = tailFlick ? 1 : 0;
-      PX.shadow(x, y, 18);
-      PX.spr('cat_stalk', x, y, opts);
-
-    } else if (s === 'pounce') {
-      // a low arc through the air
+    // a pounce is a low arc through the air, nose up and then nose down
+    let lift = 0;
+    if (s === 'pounce') {
       const k = 1 - this.idleTimer / this.pounceLen;
-      const lift = Math.round(sin(k * PI) * 9);
-      PX.shadow(x, y, 18 - lift);
-      PX.spr('cat_pounce', x, y - lift, opts);
+      lift = Math.sin(k * PI) * 0.6;
+      u.torso.rotation.x += -0.45 + k * 0.8;
+    }
+    G3.place(m, this.wx, this.wy, lift * ANIMALS3.CAT_SIZE);
+    // sitting and lying it turns more toward us than when it is on the move
+    const settled = s === 'sit' || s === 'miss' || s === 'sleep' || s === 'sheltering';
+    ANIMALS3.turn(m, this.wx, this.wy, (this.dir < 0 ? -1 : 1) * (settled ? 0.7 : 1.15), s === 'pounce' ? 0.5 : 0.2);
+    this._yaw = m.rotation.y;
 
-    } else {
-      if (s === 'shelter') opts.frame = 'run' + (floor(this.walkPhase / 1.6) % 2);
-      else if (s === 'wander') opts.frame = 'walk' + (floor(this.walkPhase / HALF_PI) % 4);
-      else opts.frame = this.blinking ? 'blink' : (tailFlick ? 'stand1' : 'stand0');
-      PX.shadow(x, y, 16);
-      PX.spr('cat', x, y, opts);
+    // legs: a walk swings opposite corners, a run for shelter gallops
+    if (s === 'wander' || s === 'shelter') {
+      const run = s === 'shelter';
+      const swing = Math.sin(this.walkPhase) * (run ? 0.9 : 0.5);
+      u.front[0].rotation.x += swing;
+      u.front[1].rotation.x += run ? swing : -swing;
+      u.back[0].rotation.x = -swing;
+      u.back[1].rotation.x = run ? -swing : swing;
+      if (run) u.torso.rotation.x += Math.cos(this.walkPhase) * 0.08;
+    } else if (s === 'stalk') {
+      // creeping: small quick steps and a wiggle of the hips
+      const creep = Math.sin(frameCount * 0.25) * 0.25;
+      u.front[0].rotation.x += creep;
+      u.front[1].rotation.x -= creep;
+      u.back[0].rotation.x -= creep;
+      u.back[1].rotation.x += creep;
+      u.tip.rotation.z = tailFlick ? 0.6 : -0.3;
+    } else if (s === 'miss') {
+      // licking a paw as if nothing happened
+      const lick = PX.anim(2, 14);
+      u.front[0].rotation.x += lick * 0.25;
+      u.head.rotation.x += lick * 0.2;
+    } else if (s === 'sleep') {
+      u.body.scale.y = 1 + Math.sin(frameCount * 0.05) * 0.06;     // breathing
+    }
+    if (s !== 'sleep') u.body.scale.y = 1;
+
+    // the tail sways when it is up, and its tip flicks when it is down
+    if (pose === 'stand') {
+      u.tail.rotation.z += Math.sin(this.tailPhase) * 0.35;
+      u.tip.rotation.z = tailFlick ? 0.5 : 0;
+    } else if (pose === 'sit' || pose === 'lick' || pose === 'loaf') {
+      u.tip.rotation.z = tailFlick ? -0.45 : 0;
+    } else if (pose !== 'stalk') u.tip.rotation.z = 0;
+
+    const eyesShut = s === 'sleep' || (this.blinking && s !== 'stalk' && s !== 'pounce');
+    u.skull.material[4] = eyesShut ? u.faceShut : u.faceOpen;
+
+    // two little z's drift up and shrink away, one after the other
+    for (let i = 0; i < 2; i++) {
+      const z = u.zs[i];
+      z.visible = s === 'sleep';
+      if (!z.visible) continue;
+      const k = (this.zzPhase + i * 0.5) % 1;
+      const yaw = m.rotation.y;
+      z.position.set(Math.sin(yaw) * 0.35 + 0.15 + k * 0.5, 0.55 + k * 1.0, Math.cos(yaw) * 0.35);
+      z.rotation.y = -yaw;                                   // always toward the viewer
+      z.scale.setScalar((0.6 + k * 0.7) * (k < 0.75 ? 1 : (1 - k) * 4));
     }
   }
 }
 
-// I SPY card: the cat sitting with a slow blink and a flick of the tail.
-// It wears the coat of the cat that is in the garden today.
-CARD_ART.cat = (x, y, tick) => {
-  const coat = (typeof cat !== 'undefined' && cat) ? cat.coat : 'orange';
-  let frame = Math.floor(tick / 40) % 2 === 0 ? 'sit0' : 'sit1';
-  if (tick % 150 < 8) frame = 'blink';
-  PX.shadow(x, y, 12);
-  PX.spr('cat_sit', x, y, { frame, pal: CAT_COATS[coat] });
-};
+// I SPY card: the cat sitting, wearing the coat of the cat that is in the
+// garden today.
+G3.cardArt('cat', () => {
+  const m = ANIMALS3.cat((typeof cat !== 'undefined' && cat) ? cat.coat : 'orange');
+  ANIMALS3.poseCat(m, 'sit', 1);
+  return m;
+}, { yaw: 0.6 });

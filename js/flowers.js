@@ -2,75 +2,53 @@
 // File: flowers.js
 // Author: Cole Perkins
 // Date Created: March 28, 2026 (refactored April 1, 2026)
-// Last Modified: November 22, 2026
-// Description: Flower class and pixel-art drawing for the CARE Garden.
-//   A flower grows from a seed mound through sprout and bud to a bloom
-//   with a student's photo in its centre; group photos grow one
-//   branching plant with a bloom per face. A new flower opens at a big
-//   "celebration" size and after a minute and a half settles to a
-//   compact garden size, so a full day of smiles stays a meadow. Heads,
-//   stems and plants are painted once into small cached canvases (see
-//   js/art/flowers_art.js) so a garden of a thousand flowers stays fast.
+// Last Modified: November 23, 2026
+// Description: Flower class for the CARE Garden, drawn as block flowers
+//   in the 3D garden. A flower grows from a seed mound through a sprout
+//   to a bloom with a student's real photo in its centre; group photos
+//   grow one branching plant with a bloom per face. A new flower opens at
+//   a big "celebration" size and after a minute and a half settles to a
+//   compact garden size, so a full day of smiles stays a meadow. Each
+//   flower is ONE baked mesh (stem, leaves, petals, frames; block art in
+//   js/art/flowers_art.js) plus one unlit photo square per face; it grows
+//   and settles by scaling, and is never rebuilt.
 // ================================================================
 
 // ── Growth stages ─────────────────────────────────────
 // `size` runs from 0.02 (just planted, or eaten by the ram) up past 1
 // (boosted). These are the sizes at which a flower changes stage.
 const FLOWER_SPROUT_AT = 0.05;   // below this: only a seed mound
-const FLOWER_BUD_AT    = 0.11;   // sprout becomes a stem with a bud
-const FLOWER_OPEN_AT   = 0.19;   // bud opens into a small bloom
-const FLOWER_FULL_AT   = 0.30;   // full bloom: the face is at its proper size
+const FLOWER_BUD_AT    = 0.11;   // sprout becomes a small plant that grows up
+const FLOWER_FULL_AT   = 0.30;   // full bloom (the sparkle goes off as it passes this)
 
 // ── Celebration size and garden size ──────────────────
 // A new flower opens big so the student who just smiled can find
 // themselves from across the room. After a minute and a half it eases
-// down, a pixel at a time, to a compact garden size and stays there, so
-// a whole school day of smiles is a meadow with room for the ram and the
-// students to be seen in it. When the garden is crowded, all but the
-// newest flowers shrink one more step.
+// down to a compact garden size and stays there, so a whole school day
+// of smiles is a meadow with room for the ram and the students to be
+// seen in it. When the garden is crowded, all but the newest flowers
+// shrink one more step.
 const FLOWER_SETTLE_START = 90;   // seconds a flower stays at celebration size
 const FLOWER_SETTLE_TIME  = 26;   // seconds it then takes to ease down
 const FLOWER_CROWD_AT     = 100;  // flowers older than the newest 100 are "crowded"
 
-// Face radius in art pixels at each time of a flower's life. 4 is the
-// smallest at which a photo still reads as a face on the TV.
-const FLOWER_R_FRESH = 7, FLOWER_R_GARDEN = 5, FLOWER_R_CROWD = 4;
-const FLOWER_GROUP_R_FRESH = 6, FLOWER_GROUP_R_GARDEN = 4;   // blooms of a group plant
-const FLOWER_R_OPENING = 4;       // the small bloom between bud and full bloom
-
-// Stem height in whole art pixels. It climbs quickly at first and levels
-// off, so boosted flowers get bigger heads rather than endless stalks.
-// `shrink` (1 = celebration size) shortens the stalk of a settled flower
-// and `minH` keeps its head clear of the ground.
-function flowerStemHeight(size, type, shrink = 1, minH = 2) {
-  const k = type.stemStyle === 'thick' ? 1.12 : type.stemStyle === 'droop' ? 0.94 : 1;
-  return Math.max(2, minH, Math.round(46 * (1 - Math.exp(-1.5 * size)) * k * shrink));
-}
-
-// A bloom with a face is drawn as one picture: the petals with the photo
-// already set into them, at full screen resolution so the face stays
-// sharp. It is kept on the photo itself and repainted only when the bloom
-// changes size (`key`), so a settled flower costs one drawImage a frame.
-function flowerBloomArt(img, head, r, key) {
-  let b = img._flBloom;
-  const S = PX.S;
-  if (!b || b.key !== key || b.S !== S || b.head !== head) {
-    const cv = (b && b.cv) || document.createElement('canvas');
-    cv.width = head.cv.width * S; cv.height = head.cv.height * S;
-    const g = cv.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    g.setTransform(S, 0, 0, S, 0, 0);
-    g.drawImage(head.cv, 0, 0);
-    PX.withTarget(g, () => PX.photo(img, head.ax, head.ay, r));
-    PX.forgetPhoto(img);   // the cut-out photo is part of the bloom now
-    b = img._flBloom = { cv, key, S, head };
-  }
-  return b.cv;
-}
+// ── Sizes in blocks ───────────────────────────────────
+// A flower is built once at its celebration size and scaled as a whole.
+//   single flower   photo 2 blocks across on a stem 3.3-4.4 blocks tall;
+//                   settled x0.66: photo 1.3, stem 2.2-2.9;
+//                   crowded x0.60: photo 1.2
+//   group plant     photos 1.24 across; settled x0.74: 0.92
+//   no photo        middle block 1 across on a stem 2-2.6 blocks tall
+// (A grown-up is 2 blocks tall with a head half a block across.)
+const FLOWER_U_SINGLE = 1.0;      // half the width of a single flower's photo
+const FLOWER_U_GROUP  = 0.62;     // ... of each photo on a group plant
+const FLOWER_U_PLAIN  = 0.5;      // ... of the middle block of a flower with no photo
+const FLOWER_SETTLE_SHRINK = 0.34, FLOWER_GROUP_SHRINK = 0.26, FLOWER_CROWD_SHRINK = 0.06;
+const FLOWER_TILT = 0.2;          // radians a bloom leans back to face the camera (about 12 degrees)
 
 // ── Colour ────────────────────────────────────────────
 // Petal colours are snapped to 24 hues and two tones so that flowers
-// share cached art. Returns { key, ramp } (ramp from PX.ramp).
+// look like one family. Returns { key, ramp } (ramp from PX.ramp).
 function flowerColour(hsl) {
   const hq = (Math.round((((hsl[0] % 360) + 360) % 360) / 15) * 15) % 360;
   const light = hsl[2] >= 63;
@@ -80,165 +58,13 @@ function flowerColour(hsl) {
   return { key: hq + (light ? 'L' : 'D'), ramp: PX.ramp(hq, s, l) };
 }
 
-// ── Art caches ────────────────────────────────────────
-// Everything a flower draws is a small canvas built once and shared.
-// Each cache is bounded: when full, the oldest entry is dropped (flowers
-// still using it keep their own reference until they change stage).
-const FlowerCache = {
-  heads: new Map(), stems: new Map(), plants: new Map(), small: new Map(),
-  get(map, key, cap, build) {
-    let v = map.get(key);
-    if (!v) {
-      v = build();
-      if (map.size >= cap) map.delete(map.keys().next().value);
-      map.set(key, v);
-    }
-    return v;
-  },
-};
 
-// `trim` = 1 gives the shorter petals of a group plant's blooms.
-function flowerHeadArt(type, col, r, face, trim = 0) {
-  const key = type.name + '|' + col.key + '|' + r + (face ? 'f' : 'n') + trim;
-  return FlowerCache.get(FlowerCache.heads, key, 1600,
-    () => FLOWER_ART.head(type.name, r, face, col.ramp,
-      face ? FLOWER_ART.petalLen(type.name, r, trim) : 0));
-}
-function flowerBudArt(col, big) {
-  return FlowerCache.get(FlowerCache.small, 'bud' + col.key + (big ? 'B' : 's'), 300,
-    () => FLOWER_ART.bud(col.ramp, big));
-}
-function flowerStemArt(type, H) {
-  return FlowerCache.get(FlowerCache.stems, type.name + '|' + H, 700,
-    () => buildFlowerStem(type, H));
-}
-function flowerPlantArt(type, n, d, base) {
-  const blade = type.name === 'lily' || type.name === 'tulip';
-  return FlowerCache.get(FlowerCache.plants, n + (blade ? 'b' : 'r') + d + '|' + base, 400,
-    () => buildFlowerPlant(n, blade, d, base));
-}
-
-// ── Stems ─────────────────────────────────────────────
-// Paints a straight stem H pixels tall with its leaves into a canvas.
-// The sway is added when it is drawn, by sliding rows sideways.
-// Returns { cv, ax, headDx }: ax is the canvas column of the stem and
-// headDx how far the top leans over (the poppy nods).
-function buildFlowerStem(type, H) {
-  const W = 33, ax = 16;
-  const cv = document.createElement('canvas');
-  cv.width = W; cv.height = H;
-  const style = type.stemStyle, name = type.name;
-  const lit = PAL.gr1, mid = PAL.gr2, edge = PAL.gr5;
-  let headDx = 0;
-  PX.withTarget(cv.getContext('2d'), () => {
-    // Leaves first, so the stem runs over where they join
-    if (H >= 7) {
-      if (name === 'lily' || name === 'tulip') {
-        const f = H < 11 ? 0 : H < 17 ? 1 : 2;
-        PX.spr('fl_blade', ax + 2, H, { frame: f });
-        PX.spr('fl_blade', ax - 1, H, { frame: Math.max(0, f - 1), flip: true });
-      } else if (name === 'sunflower') {
-        const f = H < 14 ? 0 : 1;
-        PX.spr('fl_bigleaf', ax + 3, H - 2, { frame: f });
-        if (H >= 13) PX.spr('fl_bigleaf', ax - 2, H - 6, { frame: f, flip: true });
-      } else if (style === 'wispy') {
-        PX.spr('fl_frond', ax + 1, H - 1);
-        if (H >= 12) PX.spr('fl_frond', ax - 1, H - 5, { flip: true });
-      } else {
-        const f = H < 13 ? 0 : 1;
-        PX.spr('fl_leaf', ax + 2, H - 2, { frame: f });
-        if (H >= 12) PX.spr('fl_leaf', ax - 1, H - 6, { frame: f, flip: true });
-      }
-    }
-    const nod = [0, 1, 1, 2, 3];
-    for (let yg = 0; yg < H; yg++) {          // yg = height above the ground
-      const y = H - 1 - yg;
-      let xo = 0;
-      if (style === 'wispy') xo = Math.round(Math.sin(yg * 0.45) * 0.8);
-      if (style === 'droop' && H >= 12) {
-        const up = yg - (H - 6);
-        if (up >= 0) xo = nod[Math.min(up, 4)];
-        headDx = 3;
-      }
-      if (style === 'thick') {
-        PX.rect(ax - 2, y, 5, 1, edge);
-        PX.px(ax - 1, y, lit);
-        PX.px(ax, y, mid);
-        PX.px(ax + 1, y, PAL.gr3);
-      } else {
-        if (style === 'wispy') {
-          PX.px(ax - 1 + xo, y, mid);
-          PX.px(ax + xo, y, edge);
-        } else {
-          PX.px(ax - 1 + xo, y, lit);
-          PX.px(ax + xo, y, style === 'thorny' ? PAL.gr3 : mid);
-          PX.px(ax + 1 + xo, y, edge);
-        }
-        if (style === 'thorny') {
-          // Thorns alternate up the stem
-          if (yg % 8 === 3) { PX.px(ax + 2, y, PAL.br3); PX.px(ax + 3, y - 1, PAL.br4); }
-          if (yg % 8 === 7) { PX.px(ax - 2, y, PAL.br3); PX.px(ax - 3, y - 1, PAL.br4); }
-        }
-      }
-    }
-  });
-  return flowerTrimArt({ cv, ax, headDx });
-}
-
-// Crops the empty columns off the sides of a stem or plant canvas (they
-// cost time to draw) and moves its anchor column to match.
-function flowerTrimArt(art) {
-  const src = art.cv, w = src.width, h = src.height;
-  if (!w || !h) return art;
-  const d = src.getContext('2d').getImageData(0, 0, w, h).data;
-  let x0 = w, x1 = -1;
-  for (let x = 0; x < w; x++) {
-    for (let y = 0; y < h; y++) {
-      if (d[(y * w + x) * 4 + 3]) { if (x < x0) x0 = x; x1 = x; break; }
-    }
-  }
-  if (x1 < 0 || (x0 === 0 && x1 === w - 1)) return art;
-  const cv = document.createElement('canvas');
-  cv.width = x1 - x0 + 1; cv.height = h;
-  cv.getContext('2d').drawImage(src, -x0, 0);
-  art.cv = cv;
-  art.ax -= x0;
-  return art;
-}
-
-// Draws a stem (or a whole plant) canvas with its foot at (x, y), leaning
-// `lean` pixels at the top. The lean is made by cutting the picture into
-// horizontal bands and sliding each one a pixel further. `hidden` is how
-// many rows at the top are covered by the flower's own head and need not
-// be drawn at all.
-function drawFlowerSwayed(art, x, y, lean, hidden) {
-  const c = PX.c, cv = art.cv, h = cv.height, w = cv.width;
-  const dx = x - art.ax, dy = y - h;
-  const top = hidden > 0 ? Math.min(h - 1, hidden) : 0;   // first row worth drawing
-  const vis = h - top;                                    // rows to draw, counted up from the ground
-  if (lean === 0 || h < 4) { c.drawImage(cv, 0, top, w, vis, dx, dy + top, w, vis); return; }
-  const n = Math.abs(lean), sg = lean < 0 ? -1 : 1;
-  let g0 = 0;
-  for (let k = 0; k <= n && g0 < vis; k++) {
-    const g1 = Math.min(vis, k === n ? h : Math.round(h * Math.sqrt((k + 0.5) / n)));
-    if (g1 > g0) c.drawImage(cv, 0, h - g1, w, g1 - g0, dx + sg * k, dy + h - g1, w, g1 - g0);
-    g0 = g1;
-  }
-}
-// How far drawFlowerSwayed slides the band `yg` pixels above the ground.
-function flowerSwayAt(yg, h, lean) {
-  if (lean === 0 || h < 4) return 0;
-  const n = Math.abs(lean), f = Math.min(1, Math.max(0, yg / h));
-  return (lean < 0 ? -1 : 1) * Math.min(n, Math.floor(n * f * f + 0.5));
-}
-
-// ── Group plants ──────────────────────────────────────
+// ── Plans ─────────────────────────────────────────────
 // Where the blooms sit on a plant of 2–6 faces: [x right, y up], highest
 // first, measured in bloom spacings (one spacing = the width of a bloom
 // plus a small gap) from the lowest bloom. Every pair is at least one
-// spacing apart, so no bloom touches another and the green branches show
-// between them, and the heights are staggered so it reads as one
-// branching plant rather than a bunch.
+// spacing apart, so no bloom touches another and no photo hides another,
+// and the heights are staggered so it reads as one little flower tree.
 const FLOWER_GROUP_LAYOUTS = {
   2: [[-0.55, 0.4], [0.55, 0]],
   3: [[0.05, 0.95], [-0.62, 0.1], [0.62, 0]],
@@ -247,62 +73,137 @@ const FLOWER_GROUP_LAYOUTS = {
   6: [[0.25, 1.15], [-0.85, 1.0], [1.35, 0.95], [-1.4, 0.1], [0.8, 0.1], [-0.3, 0]],
 };
 
-// Paints the stem and branches of a group plant whose blooms are `d`
-// pixels apart, the lowest of them `base` pixels above the ground.
-// Returns { cv, ax, pts }: pts are the bloom centres { x, y } relative to
-// the foot of the stem (y up).
-function buildFlowerPlant(n, blade, d, base) {
-  const layout = FLOWER_GROUP_LAYOUTS[Math.min(6, Math.max(2, n))];
-  const pts = layout.map(p => ({ x: Math.round(p[0] * d), y: base + Math.round(p[1] * d) }));
-  let top = 0, halfW = 0;
-  for (const p of pts) { top = Math.max(top, p.y); halfW = Math.max(halfW, Math.abs(p.x)); }
-  halfW += 10;
-  const H = top + 1, ax = halfW;
-  const cv = document.createElement('canvas');
-  cv.width = halfW * 2 + 1; cv.height = H;
-  const lit = PAL.gr1, mid = PAL.gr2, edge = PAL.gr5;
-  PX.withTarget(cv.getContext('2d'), () => {
-    // Leaves at the foot
-    if (blade) {
-      PX.spr('fl_blade', ax + 2, H, { frame: H < 30 ? 1 : 2 });
-      PX.spr('fl_blade', ax - 1, H, { frame: H < 30 ? 0 : 1, flip: true });
-    } else {
-      PX.spr('fl_leaf', ax + 2, H - 2, { frame: 1 });
-      PX.spr('fl_leaf', ax - 1, H - 5, { frame: H < 30 ? 0 : 1, flip: true });
+// How far the petals of each kind of bloom reach, in bloom units.
+const FLOWER_REACH = {};
+function flowerReach(name, face, trim) {
+  const key = name + (face ? 'f' : 'n') + trim;
+  if (!FLOWER_REACH[key]) FLOWER_REACH[key] = FLOWER3.bloom(name, PX.ramp(0), face, trim).reach;
+  return FLOWER_REACH[key];
+}
+
+// Lays a flower out at its celebration size, in blocks from the foot of
+// the stem: { blooms: [{ x, y, z, u }], H, reach, top, tilt, group,
+// face, trim }. blooms are the centres of the photos (u = half a photo's
+// width), highest first; reach is how far a bloom's petals go from its
+// centre and top is the highest point of the plant.
+function flowerPlan(f) {
+  const n = f.imgs.length, type = f.type, name = type.name;
+  const q = v => Math.round(v * 16) / 16;                       // whole texels
+  const tall = Math.max(0, Math.min(1, (f.baseSize - 0.38) / 0.54));
+  const tilt = FLOWER_TILT + 0.035 * Math.sin(f.phase * 3);
+  const plan = { blooms: [], group: n > 1, face: n > 0, trim: n > 1 ? 1 : 0, tilt, jog: 0 };
+  const u = n > 1 ? FLOWER_U_GROUP : n === 1 ? FLOWER_U_SINGLE : FLOWER_U_PLAIN;
+  const reach = flowerReach(name, plan.face, plan.trim) * u;
+  const z = 0.07 + 0.36 * u;                                     // blooms stand just in front of the stem
+  if (n > 1) {
+    const layout = FLOWER_GROUP_LAYOUTS[Math.min(6, n)];
+    const d = 2 * reach + 0.45, base = reach + 0.9 + 0.8 * tall;
+    for (let i = 0; i < n; i++) {
+      const p = layout[i % layout.length];
+      plan.blooms.push({ x: q(p[0] * d), y: q(base + p[1] * d), z: z + (i % 2) * 0.03, u });
     }
-    // Each bloom gets a branch that leaves the main stem below it, sweeps
-    // outward and then turns up into the bloom, like the arm of a
-    // candlestick. Blooms right above the foot sit on the stem itself.
-    let stemTop = 0;
-    for (const p of pts) {
-      if (Math.abs(p.x) < 3) { stemTop = Math.max(stemTop, p.y); continue; }
-      const fork = Math.max(2, p.y - Math.round(Math.abs(p.x) * 0.75) - 3);
-      stemTop = Math.max(stemTop, fork);
-      // A curve from the fork (0, fork) to the bloom (p.x, p.y) that bends
-      // through the point straight below the bloom
-      const steps = Math.abs(p.x) + p.y - fork;
-      let leafAt = null;
-      for (let i = 0; i <= steps; i++) {
-        const u = i / steps, v = 1 - u;
-        const bx = (2 * v * u + u * u) * p.x;
-        const by = v * v * fork + 2 * v * u * (fork + 1) + u * u * p.y;
-        const X = ax + Math.round(bx), Y = H - 1 - Math.round(by);
-        PX.px(X, Y + 1, edge);
-        PX.px(X, Y, lit);
-        if (!leafAt && u >= 0.3) leafAt = [X, Y];
-      }
-      // a small leaf on the outward sweep of the longer branches
-      if (leafAt && Math.abs(p.x) >= 9) {
-        PX.spr('fl_leaf', leafAt[0] + (p.x > 0 ? -1 : 1), leafAt[1] + 1, { frame: 0, flip: p.x < 0 });
-      }
+    plan.H = plan.blooms[0].y;
+  } else {
+    const k = type.stemStyle === 'thick' ? 1.06 : type.stemStyle === 'droop' ? 0.95 : 1;
+    let H = n === 1 ? (3.2 + 1.2 * tall) * k : 2.0 + 0.6 * tall;
+    H = Math.max(H, reach + 1.05);                               // long petals stay clear of the lawn
+    if (type.stemStyle === 'droop') plan.jog = 0.25;             // the poppy nods to one side
+    plan.H = q(H);
+    plan.blooms.push({ x: plan.jog, y: plan.H, z, u });
+  }
+  plan.reach = reach;
+  plan.top = 0;
+  for (const b of plan.blooms) plan.top = Math.max(plan.top, b.y + reach);
+  return plan;
+}
+
+// ── Models ────────────────────────────────────────────
+// G3.merged with every face checked to be wound the way its normal
+// points (a face wound backwards is culled and the box shows hollow).
+function flowerMesh(boxes) {
+  const mesh = G3.merged(boxes), g = mesh.geometry;
+  const pos = g.attributes.position.array, nor = g.attributes.normal.array, idx = g.index.array;
+  for (let i = 0; i < idx.length; i += 3) {
+    const a = idx[i] * 3, b = idx[i + 1] * 3, c = idx[i + 2] * 3;
+    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+    const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+    const facing = (uy * vz - uz * vy) * nor[a] + (uz * vx - ux * vz) * nor[a + 1] + (ux * vy - uy * vx) * nor[a + 2];
+    if (facing < 0) { idx[i + 1] = c / 3; idx[i + 2] = b / 3; }
+  }
+  return mesh;
+}
+
+// Small pieces every flower shares (one geometry each, never freed):
+// the dirt mound, the sprout and the sparkles.
+const FLOWER_PARTS = {};
+function flowerPart(kind) {
+  let proto = FLOWER_PARTS[kind];
+  if (!proto) {
+    proto = flowerMesh(FLOWER3[kind]());
+    proto.geometry.userData.own = false;                         // shared: G3.dispose leaves it alone
+    if (kind === 'sparkles') {
+      proto.material = G3.mat('#ffffff', { basic: true, vertexColors: true });
+      proto.castShadow = false; proto.receiveShadow = false;
     }
-    for (let yg = 0; yg <= stemTop; yg++) {
-      PX.px(ax - 1, H - 1 - yg, lit);
-      PX.px(ax, H - 1 - yg, mid);
-      PX.px(ax + 1, H - 1 - yg, edge);
+    FLOWER_PARTS[kind] = proto;
+  }
+  return proto.clone();
+}
+
+// Builds the model of a flower at its celebration size:
+//   root (at the foot; rocks in the wind)
+//     plant (scaled as the flower grows and settles)
+//       ONE mesh: stem, leaves, branches, petals, backing slabs, frames
+//       one G3.photo square per face (the real photo, unlit)
+// The mound, sprout and sparkles are added to the root only while needed.
+function buildFlowerModel(f) {
+  const plan = f.plan, type = f.type, ramp = f.col.ramp;
+  const root = new THREE.Group(), plant = new THREE.Group();
+  const L = [];
+  if (plan.group) FLOWER3.branches(L, type.name, plan.blooms, plan.reach + 0.25);
+  else FLOWER3.stem(L, type.name, type.stemStyle, plan.H, plan.H - plan.reach, plan.jog);
+  const stemBoxes = L.length;
+  const art = FLOWER3.bloom(type.name, ramp, plan.face, plan.trim);
+  for (const b of plan.blooms) {
+    for (const p of art.boxes) {
+      L.push({ x: b.x + p.x * b.u, y: b.y + p.y * b.u, z: b.z + p.z * b.u,
+        w: p.w * b.u, h: p.h * b.u, d: p.d * b.u, c: p.c });
+    }
+  }
+  const mesh = flowerMesh(L);
+  // Tip each bloom back about its own centre so it faces the camera
+  // (the boxes of a bloom turn together, as one block).
+  const pos = mesh.geometry.attributes.position.array, nor = mesh.geometry.attributes.normal.array;
+  const c = Math.cos(-plan.tilt), s = Math.sin(-plan.tilt), per = art.boxes.length * 72;
+  plan.blooms.forEach((b, i) => {
+    const from = stemBoxes * 72 + i * per;
+    for (let k = from; k < from + per; k += 3) {
+      const y = pos[k + 1] - b.y, z = pos[k + 2] - b.z;
+      pos[k + 1] = b.y + y * c - z * s;
+      pos[k + 2] = b.z + y * s + z * c;
+      const ny = nor[k + 1], nz = nor[k + 2];
+      nor[k + 1] = ny * c - nz * s;
+      nor[k + 2] = ny * s + nz * c;
     }
   });
-  return flowerTrimArt({ cv, ax, pts });
+  mesh.matrixAutoUpdate = false;
+  plant.add(mesh);
+  // The photos: real, unlit, never redrawn; each just in front of its frame.
+  plan.blooms.forEach((b, i) => {
+    const img = f.imgs[i];
+    if (!img) return;
+    const ph = G3.photo(img, 2 * b.u);
+    ph.position.set(b.x, b.y - s * 0.02 * b.u, b.z + c * 0.02 * b.u);
+    ph.rotation.x = -plan.tilt;
+    ph.castShadow = false;
+    ph.updateMatrix();
+    ph.matrixAutoUpdate = false;
+    plant.add(ph);
+  });
+  root.add(plant);
+  root.userData.plant = plant;
+  G3.place(root, f.wx, f.wy, 0);
+  return root;
 }
 
 // ── Flowers ───────────────────────────────────────────
@@ -322,7 +223,12 @@ function buildFlowerPlant(n, blade, d, base) {
 // None of these say how big the flower is DRAWN: that also depends on how
 // long ago it was planted (see "Celebration size and garden size" above).
 //
-// AIMING AT A FLOWER (art pixels, as it was last drawn):
+// AIMING AT A FLOWER, in blocks (scene positions, THREE.Vector3; pass
+// `out` to avoid allocating):
+//   foot3(out)     where the stem meets the lawn
+//   head3(i, out)  the middle of bloom i, swaying with the plant
+//
+// ... and the same in ART pixels, as the camera sees them:
 //   footPos()   { x, y }     where the stem meets the ground
 //   headPos(i)  { x, y, r }  the middle of a bloom, swaying with the stem;
 //               r is how far its petals reach from that point. i = 0 (the
@@ -332,7 +238,7 @@ function buildFlowerPlant(n, blade, d, base) {
 //   height()    art pixels from the ground to the top of the flower
 //   blooms      how many blooms it has (1, or one per face)
 class Flower {
-  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+  static g3 = true;      // drawn as a block model in the 3D garden (see js/g3.js)
 
   constructor(wx, wy, hsl, imgs = []) {
     this.wx    = wx;
@@ -341,8 +247,7 @@ class Flower {
     this.imgs  = imgs;
     this.type  = FLOWER_TYPES[floor(random(FLOWER_TYPES.length))];
     const [lo, hi] = this.type.sizeRange;
-    // Every flower is drawn at one scale now, so the back rows only need
-    // to be a little taller to peek over the rows in front.
+    // The back rows are a little taller, to peek over the rows in front.
     const depthFactor = lerp(1.15, 0.95, this.wy);
     this.size       = 0.0;
     this.targetSize = (lo + random(hi - lo)) * depthFactor;
@@ -354,7 +259,8 @@ class Flower {
     this.popTimer   = 0;       // frames left of the "just bloomed" sparkle
     this.wasSmall   = false;   // has been seen below full bloom
     this.col        = flowerColour(hsl);
-    this.art        = {};      // the cached canvases this flower is using
+    this.plan       = flowerPlan(this);   // its shape in blocks (see flowerPlan)
+    this.lean       = 0;       // how far it is rocking right now (radians)
     // Settling from celebration size to garden size
     this.age      = 0;         // seconds since it was planted
     this.settleAt = FLOWER_SETTLE_START + this.phase / TWO_PI * 8;   // flowers don't all shrink at once
@@ -377,13 +283,6 @@ class Flower {
     if (this.targetSize < this.maxAllowed) {
       this.targetSize = min(this.targetSize + 0.05, this.maxAllowed);
     }
-  }
-
-  // True while a boost is still strong enough to show as a bigger head.
-  // One new smile is enough for a fresh flower; a settled one needs the
-  // gardener's watering can or a run of smiles.
-  isPerky() {
-    return this.targetSize >= this.restSize * (1.04 + 0.16 * this.settle);
   }
 
   // Interpolates the flower toward its target size each frame, and ages it
@@ -417,195 +316,155 @@ class Flower {
     if (this.popTimer > 0) this.popTimer--;
   }
 
-  // Removes face images from the DOM to free memory
+  // Frees the model (its mesh and the photo textures) and removes the
+  // face images from the DOM to free memory
   dispose() {
+    G3.forget(this);
     for (let img of this.imgs) {
       PX.forgetPhoto(img);
-      img._flBloom = null;
       img.remove();
     }
     this.imgs = [];
-    this.art = {};
+  }
+
+  // How big the plant is drawn right now, as a multiple of the
+  // celebration size it was built at: it grows with `size` (and shrinks
+  // again as the ram eats it), swells a little with a boost, and eases
+  // down as it settles. 0 while it is still a seed or a sprout.
+  scale3() {
+    const size = this.size;
+    if (size < FLOWER_BUD_AT) return 0;
+    const rel = size / this.baseSize;
+    let k = rel >= 1 ? 1 + 0.3 * Math.min(0.6, rel - 1)
+      : Math.pow(Math.max(0, (size - 0.06) / (this.baseSize - 0.06)), 0.75);
+    k *= 1 - (this.plan.group ? FLOWER_GROUP_SHRINK : FLOWER_SETTLE_SHRINK) * this.settle
+      - FLOWER_CROWD_SHRINK * this.crowd * this.settle;
+    if (this.popTimer > 22) k *= 1.06;        // a little spring as it opens
+    return k;
+  }
+  // Height in blocks of the seedling (0 for a seed).
+  sproutHeight() {
+    return this.size < FLOWER_SPROUT_AT ? 0.1 : 0.5 * (0.4 + 0.9 * (this.size - FLOWER_SPROUT_AT) / (FLOWER_BUD_AT - FLOWER_SPROUT_AT));
   }
 
   // ── For the characters (see the notes above the class) ──
-  footPos() { return worldToPx(this.wx, this.wy); }
-  headPos(i = 0) {
-    if (this.headY === undefined) { const p = this.footPos(); return { x: p.x, y: p.y, r: 0 }; }
-    const plant = this.art.plant;
-    if (i > 0 && this.isGroup && plant && plant.pts[i]) {
-      const p = plant.pts[i];
-      return { x: this.footX + p.x + flowerSwayAt(p.y, plant.cv.height, this.lean), y: this.footY - p.y, r: this.headR };
+  foot3(out) { return G3.pos(this.wx, this.wy, 0, out); }
+  head3(i = 0, out) { return this.point3(i, 0, out); }
+  // The point `up` blocks above the centre of bloom i (measured along the
+  // rocking plant); i = -1 is the foot of the stem.
+  point3(i, up, out) {
+    out = G3.pos(this.wx, this.wy, 0, out);
+    const k = this.scale3();
+    let x = 0, y = up, z = 0;
+    if (k <= 0) y += i < 0 ? 0 : this.sproutHeight();
+    else if (i >= 0) {
+      const bl = this.plan.blooms, b = bl[Math.min(i, bl.length - 1)];
+      x = b.x * k; y += b.y * k; z = b.z * k;
     }
-    return { x: this.headX, y: this.headY, r: this.headR };
+    const c = Math.cos(this.lean), s = Math.sin(this.lean);
+    out.x += x * c - y * s;
+    out.y += x * s + y * c;
+    out.z += z;
+    return out;
   }
-  height() { return this.headY === undefined ? 0 : this.footY - this.headY + this.headR; }
+  footPos() {
+    if (!G3.ready) return worldToPx(this.wx, this.wy);
+    return G3.artAt(this.wx, this.wy, 0);
+  }
+  headPos(i = 0) {
+    if (!G3.ready) { const p = worldToPx(this.wx, this.wy); return { x: p.x, y: p.y, r: 0 }; }
+    const v = Flower._v || (Flower._v = new THREE.Vector3());
+    const k = this.scale3(), reach = k > 0 ? this.plan.reach * k : 0.12;
+    const p = G3.toArt(this.point3(i, 0, v));
+    p.r = Math.max(1, p.y - G3.toArt(this.point3(i, reach, v)).y);
+    return p;
+  }
+  height() {
+    if (!G3.ready) return 0;
+    const v = Flower._v || (Flower._v = new THREE.Vector3());
+    const k = this.scale3();
+    const top = k > 0 ? this.plan.top * k : this.sproutHeight();
+    return G3.toArt(this.point3(-1, 0, v)).y - G3.toArt(this.point3(-1, top, v)).y;
+  }
   get blooms() { return Math.max(1, this.imgs.length); }
 
-  // Remembers where the flower was drawn, for headPos() and height().
-  place(x, y, hx, hy, hr, lean, isGroup) {
-    this.footX = x; this.footY = y;
-    this.headX = hx; this.headY = hy; this.headR = hr;
-    this.lean = lean; this.isGroup = isGroup;
-  }
-
-  // Updates state and draws the flower at its world position, in the
-  // stage its size has reached.
+  // Updates state and poses the model: the stage its size has reached,
+  // its scale, and its rocking in the wind.
   draw() {
     this.update();
-    const { x, y } = worldToPx(this.wx, this.wy);
-    const size = this.size, type = this.type, a = this.art;
+    const m = G3.model(this, () => buildFlowerModel(this));
+    const ud = m.userData, size = this.size;
 
-    if (size < FLOWER_SPROUT_AT) {
-      // Seed: nothing but the mound
-      PX.spr('fl_mound', x, y + 2, { frame: this.dirtAlpha > 170 ? 0 : 1 });
-      this.place(x, y, x, y - 1, 1, 0, false);
+    // Fresh dirt at the foot; it crumbles away after planting
+    if (this.dirtAlpha > 0) {
+      if (!ud.mound) { ud.mound = flowerPart('mound'); ud.mound.rotation.y = this.phase; m.add(ud.mound); }
+      const a = Math.min(1, this.dirtAlpha / 150);
+      ud.mound.scale.set(0.55 + 0.45 * a, a, 0.55 + 0.45 * a);
+    } else if (ud.mound) { m.remove(ud.mound); ud.mound = null; }
+
+    const k = this.scale3();
+    if (k <= 0) {
+      // Seed (nothing but the mound) or sprout
+      ud.plant.visible = false;
+      this.lean = 0; m.rotation.z = 0;
+      if (size >= FLOWER_SPROUT_AT) {
+        if (!ud.sprout) { ud.sprout = flowerPart('sprout'); m.add(ud.sprout); }
+        ud.sprout.visible = true;
+        ud.sprout.scale.setScalar(this.sproutHeight() / 0.5);
+      } else if (ud.sprout) ud.sprout.visible = false;
       return;
     }
-    if (size < FLOWER_BUD_AT) {
-      const f = size < 0.07 ? 0 : size < 0.09 ? 1 : 2;
-      PX.spr('fl_sprout', x, y, { frame: f });
-      this.drawMound(x, y);
-      this.place(x, y, x, y - 2 - f * 2, 2, 0, false);
-      return;
-    }
+    if (ud.sprout) { m.remove(ud.sprout); ud.sprout = null; }
+    ud.plant.visible = true;
+    ud.plant.scale.setScalar(k);
 
-    // The wind plus the flower's own slow rocking; each kind of drawing
-    // below limits how far it lets this lean its top.
-    const flex = type.stemStyle === 'thick' ? 0.6 : type.stemStyle === 'wispy' ? 1.3 : 1;
-    let lean = Math.round((windX * 2.4 + Math.sin(t * 0.03 + this.phase) * 0.9) * flex);
-    // The head nods a pixel now and then; raindrops knock it more often
+    // The wind plus the flower's own slow rocking, about the foot of the stem
+    const style = this.type.stemStyle;
+    const flex = style === 'thick' ? 0.6 : style === 'wispy' ? 1.3 : this.plan.group ? 0.7 : 1;
     const raining = rainBoost > 0;
-    let bob = Math.sin(t * (raining ? 0.21 : 0.045) + this.phase * 1.7) > (raining ? 0.2 : 0.55) ? 1 : 0;
-    if (this.popTimer > 22) bob = -1;         // a little spring as it opens
+    let lean = (-windX * 0.03 + Math.sin(t * 0.03 + this.phase) * 0.017
+      + (raining ? Math.sin(t * 0.21 + this.phase * 1.7) * 0.006 : 0)) * flex;
+    this.lean = lean = Math.max(-0.055, Math.min(0.055, lean));
+    m.rotation.z = lean;
 
-    const n = this.imgs.length;
-    // How far along it is from celebration size to garden size, and how
-    // much further the crowding of a full garden has shrunk it
-    const settle = this.settle, crowd = this.crowd * settle;
-    if (n > 1 && size >= FLOWER_OPEN_AT) {
-      this.drawGroup(x, y, lean, bob, settle, crowd);
-    } else if (size < FLOWER_OPEN_AT) {
-      // Stem with a bud on top
-      const H0 = flowerStemHeight(size, type, 1 - 0.5 * settle);
-      if (a.stemH !== H0) { a.stem = flowerStemArt(type, H0); a.stemH = H0; }
-      const maxLean = Math.floor(H0 / 9);
-      lean = Math.max(-maxLean, Math.min(maxLean, lean));
-      const hx = x + lean + a.stem.headDx, hy = y - H0 + bob;
-      drawFlowerSwayed(a.stem, x, y, lean, 0);
-      const big = size >= 0.15;
-      if (a.budBig !== big) { a.bud = flowerBudArt(this.col, big); a.budBig = big; }
-      PX.c.drawImage(a.bud.cv, hx - a.bud.ax, hy - a.bud.ay + 1);
-      this.place(x, y, hx, hy - 3, 4, lean, false);
-    } else {
-      // Bloom, with the face (if any) in the middle. Its radius steps
-      // down a pixel at a time as the flower settles; a faceless flower
-      // is drawn to the matching scale.
-      const img = n > 0 ? this.imgs[0] : null;
-      let r = FLOWER_R_OPENING;
-      if (size >= FLOWER_FULL_AT) {
-        r = Math.round(FLOWER_R_FRESH - (FLOWER_R_FRESH - FLOWER_R_GARDEN) * settle
-          - (FLOWER_R_GARDEN - FLOWER_R_CROWD) * crowd) + (this.isPerky() ? 1 : 0);
-      }
-      // Crowded flowers also wear shorter petals, so they are mostly portrait
-      const trim = crowd >= 0.5 ? 1 : 0;
-      const key = r * 2 + trim;
-      if (a.headKey !== key) {
-        a.head = flowerHeadArt(type, this.col, img ? r : r + 1, !!img, trim);
-        a.headKey = key;
-      }
-      const head = a.head, below = head.cv.height - head.ay;   // how far the head hangs below its middle
-      // A settled stalk is half as tall, a crowded one shorter still, but
-      // a few pixels of stem always show under the head
-      const H0 = flowerStemHeight(size, type, 1 - 0.5 * settle - 0.2 * crowd, below + 3 - trim);
-      if (a.stemH !== H0) { a.stem = flowerStemArt(type, H0); a.stemH = H0; }
-      const maxLean = Math.floor(H0 / 9);
-      lean = Math.max(-maxLean, Math.min(maxLean, lean));
-      const hx = x + lean + a.stem.headDx, hy = y - H0 + bob;
-      // The top of the stem is behind the head, so only the part that
-      // shows below it is drawn
-      drawFlowerSwayed(a.stem, x, y, lean, Math.max(0, below - 6));
-      PX.c.drawImage(img ? flowerBloomArt(img, head, r, key) : head.cv,
-        hx - head.ax, hy - head.ay, head.cv.width, head.cv.height);
-      if (this.popTimer > 0) this.drawSparkles(hx, hy, head.ay);
-      this.place(x, y, hx, hy, head.ay, lean, false);
-    }
-    this.drawMound(x, y);
-  }
-
-  // Branching plant with one bloom per face.
-  drawGroup(x, y, lean, bob, settle, crowd) {
-    const a = this.art, n = this.imgs.length, size = this.size, type = this.type;
-    const open = size >= FLOWER_FULL_AT;
-    // Blooms shrink as the plant settles; before they open the plant is
-    // laid out for its smallest blooms and carries buds
-    let r = FLOWER_GROUP_R_GARDEN;
-    if (open) {
-      r = Math.round(FLOWER_GROUP_R_FRESH - (FLOWER_GROUP_R_FRESH - FLOWER_GROUP_R_GARDEN) * settle)
-        + (this.isPerky() ? 1 : 0);
-    }
-    const key = open ? r : -r;
-    if (a.headKey !== key) {
-      if (open) a.head = flowerHeadArt(type, this.col, r, true, 1);
-      else a.bud = flowerBudArt(this.col, true);
-      a.headKey = key;
-      a.reach = FLOWER_ART.headReach(type.name, r, FLOWER_ART.petalLen(type.name, r, 1));
-    }
-    // Blooms are spaced by their own width plus a gap for the branches
-    // to show through; the plant stands a little taller the more grown
-    // (or boosted) it is, and tucks in when the garden is crowded
-    const d = 2 * a.reach + 1 + Math.round(5 - 3 * settle - crowd);
-    const base = a.reach + 3 + Math.round(Math.min(1.2, size) * (7 - 4 * settle - 2 * crowd));
-    if (a.plantD !== d || a.plantBase !== base) {
-      a.plant = flowerPlantArt(type, n, d, base);
-      a.plantD = d; a.plantBase = base;
-    }
-    const plant = a.plant, H = plant.cv.height;
-    const maxLean = Math.floor(H / 14);
-    lean = Math.max(-maxLean, Math.min(maxLean, lean));
-    drawFlowerSwayed(plant, x, y, lean, 0);
-    const c = PX.c, pts = plant.pts;
-    for (let i = 0; i < pts.length && i < n; i++) {
-      const p = pts[i];
-      const hx = x + p.x + flowerSwayAt(p.y, H, lean);
-      // each bloom nods in its own time
-      const nod = bob < 0 ? bob : (Math.sin(t * 0.045 + this.phase * 1.7 + i * 1.9) > 0.55 ? 1 : 0);
-      const hy = y - p.y + nod;
-      if (open) {
-        c.drawImage(flowerBloomArt(this.imgs[i], a.head, r, key),
-          hx - a.head.ax, hy - a.head.ay, a.head.cv.width, a.head.cv.height);
-        if (this.popTimer > 0 && i % 2 === 0) this.drawSparkles(hx, hy, a.head.ay);
-      } else {
-        c.drawImage(a.bud.cv, hx - a.bud.ax, hy - a.bud.ay + 2);
-      }
-    }
-    const p0 = pts[0];
-    this.place(x, y, x + p0.x + flowerSwayAt(p0.y, H, lean), y - p0.y, open ? a.head.ay : 4, lean, true);
-  }
-
-  // Twinkles round a head that has just opened.
-  drawSparkles(hx, hy, R) {
-    const age = 30 - this.popTimer;
-    PX.spr('fl_sparkle', hx - R, hy - R + 3, { frame: Math.floor(age / 6) % 4 });
-    PX.spr('fl_sparkle', hx + R, hy - 2, { frame: Math.floor((age + 8) / 6) % 4 });
-    PX.spr('fl_sparkle', hx + 2, hy - R - 2, { frame: Math.floor((age + 16) / 6) % 4 });
-  }
-
-  // Dirt mound in front of the stem; it crumbles away after planting.
-  drawMound(x, y) {
-    if (this.dirtAlpha <= 0) return;
-    PX.spr('fl_mound', x, y + 2, { frame: this.dirtAlpha > 170 ? 0 : this.dirtAlpha > 85 ? 1 : 2 });
+    // Twinkles round a bloom that has just opened
+    if (this.popTimer > 0) {
+      if (!ud.spark) { ud.spark = flowerPart('sparkles'); m.add(ud.spark); }
+      const age = 30 - this.popTimer, b = this.plan.blooms[0];
+      ud.spark.position.set(b.x * k, b.y * k, b.z * k);
+      ud.spark.scale.setScalar(this.plan.reach * k * (0.95 + 0.45 * age / 30) * (1 + 0.12 * Math.sin(age * 1.3)));
+      ud.spark.rotation.z = age * 0.035;
+      ud.spark.visible = (age % 8) < 6;
+    } else if (ud.spark) { m.remove(ud.spark); ud.spark = null; }
   }
 }
 
-// ── Hand-held flower ──────────────────────────────────
+// ── Hand-held flowers ─────────────────────────────────
 
-// Draws the tiny flower a student carries: four petals in the flower's
-// own colour round a yellow middle, on a green stem with a leaf. It is
-// about 8 art pixels tall and 7 wide, with the bottom of its stem at (x, y).
+// The tiny block flower a student carries: about 0.6 blocks tall, origin
+// at the bottom of its stem, facing +z. Flowers of one colour share their
+// geometry, so the caller may add and drop these freely.
+const TINY_FLOWERS = new Map();
+function makeTinyFlower3(hsl) {
+  const col = flowerColour(hsl || [0, 70, 60]);
+  let proto = TINY_FLOWERS.get(col.key);
+  if (!proto) {
+    proto = flowerMesh(FLOWER3.tiny(col.ramp));
+    proto.geometry.userData.own = false;      // shared: G3.dispose leaves it alone
+    TINY_FLOWERS.set(col.key, proto);
+  }
+  const g = new THREE.Group();
+  g.add(proto.clone());
+  return g;
+}
+
+// The same in 2D for the dashboard and the cards: about 8 art pixels tall
+// and 7 wide, with the bottom of its stem at (x, y).
+const TINY_FLOWER_ART = new Map();
 function drawTinyFlower(x, y, hsl) {
   const col = flowerColour(hsl || [0, 70, 60]);
-  const art = FlowerCache.get(FlowerCache.small, 'tiny' + col.key, 300, () => FLOWER_ART.tiny(col.ramp));
+  let art = TINY_FLOWER_ART.get(col.key);
+  if (!art) { art = FLOWER_ART.tiny(col.ramp); TINY_FLOWER_ART.set(col.key, art); }
   PX.c.drawImage(art.cv, Math.round(x) - art.ax, Math.round(y) - art.ay);
 }
 drawTinyFlower.pixel = true;

@@ -4,9 +4,9 @@
 // Date Created: March 28, 2026 (refactored April 1, 2026)
 // Last Modified: November 22, 2026
 // Description: Defines the MrPerkins class for the creator of the garden, who
-//   walks in from off-screen, delivers a speech bubble, then exits. Drawn as
-//   pixel art from the shared people sprites in js/art/people_art.js: bald
-//   head, dark beard, white shirt, red tie and khakis.
+//   walks in from off-screen, delivers a speech bubble, then exits. A 3D box
+//   person built by PEOPLE3 (js/g3_people.js): bald head, dark beard, white
+//   shirt, red tie and khakis.
 // ================================================================
 
 // Mr. Perkins' look: bald, dark beard, white shirt, red tie, khaki trousers.
@@ -20,7 +20,7 @@ function perkinsLook() {
 // MrPerkins class manages the enter/speak/exit lifecycle for a cameo character
 // who walks to a random position, says a phrase, then walks back off-screen.
 class MrPerkins {
-  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+  static g3 = true;      // drawn as a 3D model (see docs/GARDEN_3D.md)
 
   constructor() {
     this.fromLeft = random() < 0.5;
@@ -78,24 +78,23 @@ class MrPerkins {
     }
   }
 
-  // Draws Mr. Perkins walking, or standing and waving while he speaks.
+  // Poses Mr. Perkins walking, or standing turned toward us and waving while he speaks.
   draw() {
-    const { x, y } = worldToPx(this.wx, this.wy);
-    const walking = (this.state === 'enter' || this.state === 'exit');
-    const leg = walking ? PEOPLE.walkFrame(this.walkPhase) : 'stand';
+    const m = PEOPLE3.model(this, this.dir * G3.YAW.right);
+    const moving = PEOPLE3.move(m, this.wx, this.wy, { yaw: this.dir * 0.45 });
+    const side = PEOPLE3.nearSide(m);
     // a big wave for the first couple of seconds of his visit
-    let arm = 'walk';
-    if (!walking) arm = this.idleTimer > 70 ? (PX.anim(2, 9) ? 'wave1' : 'wave2') : 'down';
-    PX.shadow(x, y, 13);
-    PEOPLE.draw(x, y, this.look, this.dir, leg, arm, PEOPLE.face(PX.tick, 7, 'smile'));
+    const waving = this.state === 'speak' && this.idleTimer > 70;
+    PEOPLE3.pose(m, {
+      walk: moving ? this.walkPhase : null, side,
+      arm: waving ? 'wave' : 'walk',
+      face: PEOPLE.face(G3.frame, 7, 'smile'),
+    });
   }
 }
 
-// I SPY card: Mr. Perkins standing proudly, waving now and then.
-CARD_ART.mrperkins = (x, y, tick) => {
-  const L = CARD_ART._perkinsLook || (CARD_ART._perkinsLook = perkinsLook());
-  const waving = tick % 240 < 100;
-  PX.shadow(x, y, 13);
-  PEOPLE.draw(x, y, L, 1, 'stand', waving ? (Math.floor(tick / 9) % 2 ? 'wave1' : 'wave2') : 'down',
-              PEOPLE.face(tick, 7, 'smile'));
-};
+// I SPY card: Mr. Perkins standing proudly, waving.
+G3.cardArt('mrperkins', () => {
+  const m = PEOPLE3.build(perkinsLook());
+  return PEOPLE3.pose(m, { side: 'L', arm: 'wave', arm2: 'down', t: 2, snap: true });
+});

@@ -5,9 +5,9 @@
 // Last Modified: November 22, 2026
 // Description: Ms. Manning, the principal of Robert Adams Middle School.
 //   Appears at the school door during dawn, dusk, and rain to greet
-//   students and welcome them inside. Drawn as pixel art from the shared
-//   people sprites in js/art/people_art.js: blonde bob, plum blazer and
-//   skirt, white blouse, waving.
+//   students and welcome them inside. A 3D box person built by PEOPLE3
+//   (js/g3_people.js): blonde bob, plum blazer and skirt, white blouse,
+//   waving.
 // ================================================================
 
 // Ms. Manning's look: blonde bob, no glasses, blazer and skirt.
@@ -21,13 +21,18 @@ function principalLook() {
 
 // Principal character that stands at the school door during arrival/departure events
 class Principal {
-  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+  static g3 = true;      // drawn as a 3D model (see docs/GARDEN_3D.md)
 
   constructor(reason) {
-    // On the sidewalk between the two pairs of main doors, so that people
-    // going in and out pass on either side of her
-    this.wx = 0.5;
-    this.wy = 0.06;
+    // She steps out of one of the main doorways and stands on the sidewalk
+    // between the two, so that people going in and out pass on either side
+    this.spotWx = 0.5;
+    this.spotWy = 0.06;
+    this.wx = PEOPLE.doorX();
+    this.wy = PEOPLE.DOOR_IN_WY;
+    this.emerging = true;
+    this.entering = false;
+    this.speed = 0.002;
     this.dir = 1;
     this.state = 'appear';
     this.reason = reason; // 'dawn', 'dusk', 'rain'
@@ -39,11 +44,24 @@ class Principal {
     this.look = principalLook();
   }
 
-  // Updates state: fade in, speak, then walk back into school
+  // Updates state: step out, speak, then walk back into school
   update() {
     if (this.state === 'appear') {
       this.alpha = min(this.alpha + 8, 255);
-      if (this.alpha >= 255) {
+      // out of the doorway, then a few steps along to her spot
+      let there = false;
+      if (!PEOPLE.comeOut(this, this.speed)) {
+        const dx = this.spotWx - this.wx, dy = this.spotWy - this.wy;
+        const d = sqrt(dx * dx + dy * dy);
+        if (d < 0.003) there = true;
+        else {
+          const st = min(this.speed, d);
+          this.wx += dx / d * st;
+          this.wy += dy / d * st;
+          this.walkPhase += walkStride(dx / d * st, dy / d * st, PEOPLE.STRIDE_ADULT);
+        }
+      }
+      if (there && this.alpha >= 255) {
         this.state = 'welcome';
         this.timer = 360;
       }
@@ -72,38 +90,30 @@ class Principal {
     }
 
     if (this.state === 'exit') {
-      // Step back through the doors (decrease wy toward 0), fading as she goes
-      this.wy -= 0.0012;
-      this.walkPhase += 0.2;
-      this.alpha = max(0, this.alpha - 12);
-      if (this.wy <= PEOPLE.DOOR_WY || this.alpha <= 0) this.done = true;
+      // Back along the sidewalk and in through the nearer doorway
+      const fromX = this.wx, fromY = this.wy;
+      if (PEOPLE.goIn(this, this.speed)) this.done = true;
+      this.walkPhase += walkStride(this.wx - fromX, this.wy - fromY, PEOPLE.STRIDE_ADULT);
     }
   }
 
-  // Draws the principal at the school door, waving while she welcomes everyone
+  // Poses the principal on the sidewalk by the doors, facing us and waving
+  // while she welcomes everyone, looking from side to side
   draw() {
-    const a = this.alpha / 255;
-    if (a <= 0.02) return;
-    const { x, y } = worldToPx(this.wx, this.wy);
-    let leg = 'stand', arm = 'down';
-    if (this.state === 'welcome') {
-      arm = PX.anim(2, 9) ? 'wave1' : 'wave2';
-    } else if (this.state === 'exit') {
-      leg = PEOPLE.backFrame(this.walkPhase);   // seen from behind, going back in
-    }
-    const c = PX.c, prevAlpha = c.globalAlpha;
-    c.globalAlpha = prevAlpha * a;
-    PX.shadow(x, y, 12);
-    PEOPLE.draw(x, y, this.look, this.dir, leg, arm, PEOPLE.face(PX.tick, 5, 'smile'));
-    c.globalAlpha = prevAlpha;
+    const m = PEOPLE3.model(this, 0);
+    const moving = PEOPLE3.move(m, this.wx, this.wy, { yaw: 0.15 });
+    const welcoming = this.state === 'welcome';
+    PEOPLE3.pose(m, {
+      walk: moving ? this.walkPhase : null,
+      side: 'L', arm: welcoming ? 'wave' : 'walk',
+      look: welcoming ? 0.45 * Math.sin(G3.frame * 0.03) : 0,
+      face: PEOPLE.face(G3.frame, 5, 'smile'),
+    });
   }
 }
 
 // I SPY card: Ms. Manning waving hello.
-CARD_ART.principal = (x, y, tick) => {
-  const L = CARD_ART._principalLook || (CARD_ART._principalLook = principalLook());
-  const waving = tick % 220 < 150;
-  PX.shadow(x, y, 12);
-  PEOPLE.draw(x, y, L, 1, 'stand', waving ? (Math.floor(tick / 9) % 2 ? 'wave1' : 'wave2') : 'down',
-              PEOPLE.face(tick, 5, 'smile'));
-};
+G3.cardArt('principal', () => {
+  const m = PEOPLE3.build(principalLook());
+  return PEOPLE3.pose(m, { side: 'L', arm: 'wave', arm2: 'down', t: 2, snap: true });
+});

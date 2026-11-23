@@ -2,26 +2,38 @@
 // File: town.js
 // Author: Cole Perkins
 // Date Created: March 28, 2026 (refactored April 1, 2026)
-// Last Modified: November 22, 2026
-// Description: Pixel-art town backdrop: the folk-art town of Holliston
-//   along the horizon behind the school. Hills and tree line, Lake
-//   Winthrop, the rail-trail bridge and tunnel, the Superette, Fiske's,
-//   CVS, the Town Hall and the church, with cars, walkers and cyclists
-//   moving through it. The sprites live in js/art/town_art.js.
+// Last Modified: November 23, 2026
+// Description: The block-built town behind and beside the school: the
+//   terraced, wooded hills, Lake Winthrop and its brook, the rail trail
+//   with its stone bridge and tunnel, the Superette, Fiske's, CVS, the
+//   Town Hall and the white church, houses and cottages, and the cars,
+//   buses, walkers and cyclists moving through it. The models and
+//   textures of the small things live in js/art/town_art.js.
 // ================================================================
 
 // ── Town Backdrop ─────────────────────────────────────
 // Single entry point: drawTown(), called first in the frame.
 //
-// The town never changes, so it is painted once into two offscreen
-// canvases (a back layer and a front layer) and only the moving things
-// are drawn every frame, in between and on top of those two layers.
+// The town never changes, so it is built once: every still box is baked
+// into one mesh per block texture (about forty meshes for the whole
+// town) and only the moving things and the night lights are touched
+// every frame.
 //
-// Everything is laid out in art pixels measured up from the horizon
-// (PX.HOR). The school hides the middle of the town, so the landmarks
-// are pinned to the left and right edges of the screen where they show.
-// The low picket fence along the back of the lawn (js/scene.js) covers
-// the bottom few rows, up to about PX.HOR - 5.
+// Layout, in blocks (see docs/GARDEN_3D.md; the school fills x -15..15,
+// z -7..0, so the town shows to its left and right and over its roof):
+//
+//   z  -8.5 .. -11    front street, on the flat (y = 0)
+//   z -12.5 .. -16.5  front row: Fiske's and CVS (left), church and a cottage (right)
+//   z -17, -18        the bank up to the Main Street terrace (y = 2)
+//   z -22.5 .. -25    Main Street
+//   z -26 .. -30      Main Street row: Superette (left), Town Hall (right), houses
+//   z -31             the bank up to the upper terrace (y = 3)
+//   z -34 .. -35.5    the rail trail: stone bridge over the brook (left),
+//                     tunnel under a hillock (right)
+//   z -39 .. -46      far houses, fields, Lake Winthrop (far left)
+//   z -42 .. -48      the wooded ridge out to the sides (y = 4)
+// The land stops at z = -48: anything further back or higher would fill
+// the strip of sky the camera sees above the town.
 
 // ── Animation state ──────────────────────────────────
 let _bgCars         = null;
@@ -31,62 +43,40 @@ let _bgWalkers2     = null;
 let _bgBikers       = null;
 let _bgTrailWalkers = null;
 
-// The painted town: { key, back, front, lights, chimneys, ... }
+// The built town: { group, lights, clock hand, smoke, ... }
 let _town = null;
 
-// Rows of the town, in art pixels relative to the horizon (negative = up).
-const TOWN_ROWS = {
-  hill:   -67,   // average top of the far blue hill
-  forest: -60,   // average top of the tree line
-  upper:  -55,   // top of the upper terrace (lake, fields)
-  trail:  -49,   // top row of the rail trail (it is 2 rows deep)
-  main:   -41,   // top of the main town terrace
-  back:   -29,   // ground line of the Main Street buildings
-  road:   -28,   // top row of Main Street (5 rows deep)
-  front:  -9,    // ground line of the front row of buildings
-  road2:  -8,    // top row of the front street (5 rows deep, just clear of the fence)
+// Rows of the old painted town, in art pixels relative to the horizon.
+// Only weather.js still reads `upper` (for where its rainbow comes down).
+const TOWN_ROWS = { hill: -67, forest: -60, upper: -55, trail: -49, main: -41, back: -29, road: -28, front: -9, road2: -8 };
+
+// Where things are, in blocks.
+const TOWN = {
+  FRONT_Y: 0, FRONT_Z0: -11, FRONT_Z1: -8.5,      // front street
+  MAIN_Y: 2,  MAIN_Z0: -25,  MAIN_Z1: -22.5,      // Main Street
+  TRAIL_Y: 3, TRAIL_Z0: -35.5, TRAIL_Z1: -34,     // rail trail
+  TUNNEL_X: 46,                                   // the trail turns into the hill here
+  // How far a road reaches for a trip across the old screen (the moving
+  // things still keep their position in screen pixels, 0..width).
+  FRONT_SPAN: 84, MAIN_SPAN: 100, TRAIL_SPAN: 112,
 };
-
-// House colour schemes: wall, wall in shade, roof, roof highlight, door.
-const TOWN_HOUSES = [
-  { wall: PAL.ye1,   shade: PAL.ye2, roof: PAL.br3, hi: PAL.br2, door: PAL.wo3 },
-  { wall: PAL.bl1,   shade: PAL.sl1, roof: PAL.sl3, hi: PAL.sl2, door: PAL.white },
-  { wall: PAL.cream, shade: PAL.ta1, roof: PAL.re3, hi: PAL.re2, door: PAL.wo3 },
-  { wall: PAL.te1,   shade: PAL.te2, roof: PAL.g4,  hi: PAL.g3,  door: PAL.wo4 },
-  { wall: PAL.pi1,   shade: PAL.pi2, roof: PAL.wo3, hi: PAL.wo2, door: PAL.white },
-  { wall: PAL.white, shade: PAL.g1,  roof: PAL.g5,  hi: PAL.g4,  door: PAL.re3 },
-  { wall: PAL.or1,   shade: PAL.or2, roof: PAL.br4, hi: PAL.br3, door: PAL.wo4 },
-];
-
-// Car paint jobs [hue, saturation, lightness], shaded with PX.ramp
-const TOWN_CAR_COLORS = [
-  [5, 65, 52], [210, 55, 52], [120, 45, 40], [48, 70, 55], [0, 0, 82],
-  [350, 60, 55], [180, 50, 48], [25, 58, 50], [0, 60, 48],
-];
-const TOWN_SKINS = [PAL.sn2, PAL.sn4, PAL.sn1, PAL.sn5];
-const TOWN_HAIR  = [PAL.hrBrown, PAL.hrBlack, PAL.hrBlonde, PAL.hrDark, PAL.hrGinger];
 
 // Initialize car, walker, and biker arrays for background animation.
 // Positions (x) and speeds stay in screen pixels, as they always were;
-// they are turned into art pixels only when drawn.
+// they are turned into blocks along their road only when posed.
 function _initBgElements() {
   const shirts = [0, 200, 120, 48, 270, 350, 30, 180, 90];
   const carPal = (i) => {
     const c = TOWN_CAR_COLORS[i % TOWN_CAR_COLORS.length];
     const r = PX.ramp(c[0], c[1], c[2]);
-    return { l: r.l, m: r.m, d: r.d, t: r.o };
+    return { l: r.l, m: r.m, d: r.d };
   };
+  const yellowBus = { l: PAL.ye1, m: PAL.ye2, d: PAL.ye3, s: PAL.g5 };
   const whiteBus = { l: PAL.white, m: PAL.g1, d: PAL.g2, s: PAL.bl3 };
   const person = (i, hue) => ({
     c: PX.ramp(hue, 58, 55).m,
     s: TOWN_SKINS[i % TOWN_SKINS.length],
     h: TOWN_HAIR[(i * 3 + 1) % TOWN_HAIR.length],
-  });
-  // The same person as they look under the night tint (see _drawTownLights)
-  const night = typeof sceneNightTint === 'function' ? sceneNightTint() : { col: '#161c54', a: 0.56 };
-  const atNight = (pal) => ({
-    c: PX.mix(pal.c, night.col, night.a), s: PX.mix(pal.s, night.col, night.a),
-    h: PX.mix(pal.h, night.col, night.a), p: PX.mix(PAL.g5, night.col, night.a),
   });
 
   // Front street cars
@@ -96,7 +86,7 @@ function _initBgElements() {
       dir: random() < 0.5 ? 1 : -1, bus: false, pal: carPal(i) });
   }
   _bgCars.push({ x: random(0, width), speed: random(0.25, 0.6),
-    dir: random() < 0.5 ? 1 : -1, bus: true, pal: null });
+    dir: random() < 0.5 ? 1 : -1, bus: true, pal: yellowBus });
 
   // Main Street cars
   _bgCars2 = [];
@@ -105,7 +95,7 @@ function _initBgElements() {
       dir: random() < 0.5 ? 1 : -1, bus: false, pal: carPal(i + 3) });
   }
   _bgCars2.push({ x: random(0, width), speed: random(0.3, 0.7),
-    dir: random() < 0.5 ? 1 : -1, bus: true, pal: null });
+    dir: random() < 0.5 ? 1 : -1, bus: true, pal: yellowBus });
   _bgCars2.push({ x: random(0, width), speed: random(0.3, 0.7),
     dir: random() < 0.5 ? 1 : -1, bus: true, pal: whiteBus });
 
@@ -114,7 +104,6 @@ function _initBgElements() {
   for (let i = 0; i < 6; i++) {
     _bgWalkers.push({ x: random(width*0.03, width*0.97), speed: random(0.04, 0.10),
       dir: random()<0.5?1:-1, phase: random(TWO_PI), pal: person(i, shirts[i % shirts.length]) });
-    _bgWalkers[i].nightPal = atNight(_bgWalkers[i].pal);
   }
   // Main Street sidewalk walkers
   _bgWalkers2 = [];
@@ -149,683 +138,760 @@ function _townRand(seed) {
   return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
 }
 
-// The art columns where the school's walls begin and end. The town shows
-// to the left of `l` and to the right of `r` (and over the roofs between).
-function _townSchoolEdges() {
-  if (typeof schoolLayout === 'function') {
-    const L = schoolLayout();
-    return { l: L.wingL, r: L.wingR };
-  }
-  return { l: Math.floor(PX.W * 0.097), r: Math.ceil(PX.W * 0.815) };
-}
-
-// True if art columns x0..x1 are out past the ends of the school, where
-// the town can actually be seen. Only used to skip animating things nobody
-// can see; the night lights are cut to shape exactly (see _drawTownLights).
-function _townSeen(x0, x1) {
-  const e = _townSchoolEdges();
-  return x1 < e.l || x0 >= e.r;
-}
-
-// A window: blue-grey glass with a lighter top row. Remembered so it can
-// glow at night. kind: 'home' (some stay dark) or 'shop' (always lit).
-function _townWindow(T, x, y, w, h, kind) {
-  PX.rect(x, y, w, h, PAL.sl2);
-  PX.rect(x, y, w, 1, PAL.sl1);
-  T.windows.push({ x, y, w, h, kind: kind || 'home' });
-}
-
-// A window with a rounded top (the middle pixel pokes up one row)
-function _townArchWindow(T, cx, y, h) {
-  PX.px(cx, y - 1, PAL.sl1);
-  PX.rect(cx - 1, y, 3, h, PAL.sl2);
-  T.windows.push({ x: cx - 1, y, w: 3, h, kind: 'home', arch: true });
-}
-
-// A pointed evergreen in one flat colour with a few lit pixels on its left side
-function _townConifer(cx, base, h, hw, col, hi) {
-  for (let r = 0; r < h; r++) {
-    const k = Math.round(r * hw / Math.max(1, h - 1));
-    PX.rect(cx - k, base - h + r, k * 2 + 1, 1, col);
-    if (hi && k > 0 && r % 2 === 1) PX.px(cx - k + 1, base - h + r, hi);
-  }
-}
-
-// A round treetop with a lit patch on its upper left
-function _townCrown(cx, cy, rx, ry, col, hi) {
-  PX.ellipse(cx, cy, rx, ry, col);
-  if (hi) PX.ellipse(cx - 1, cy - 1, Math.max(1, rx - 2), Math.max(1, ry - 2), hi);
-}
-
-// A patch of farmland: alternating crop rows with the corners rounded off
-function _townField(x, y, w, h, a, b) {
-  for (let r = 0; r < h; r++) {
-    const inset = (r === 0 || r === h - 1) ? 1 : 0;
-    PX.rect(x + inset, y + r, w - inset * 2, 1, r % 2 === 0 ? a : b);
-  }
-}
-
-// ── Houses ───────────────────────────────────────────
-
-// A house seen gable-end on: square walls under a triangle of roof.
-// (cx, base) is the middle of its doorstep. Returns nothing; registers
-// its chimney for smoke and its windows for night lights.
-function _townHouse(T, cx, base, st) {
-  const x0 = cx - 5, top = base - 6;
-  // Chimney first, so the roof overlaps its foot
-  PX.rect(cx + 2, top - 6, 2, 5, PAL.br2);
-  PX.rect(cx + 3, top - 6, 1, 5, PAL.br4);
-  T.chimneys.push({ x: cx + 2, y: top - 7 });
-  // Walls
-  PX.rect(x0, top, 11, 6, st.wall);
-  PX.rect(x0 + 9, top, 2, 6, st.shade);
-  // Roof: a stepped triangle, lit along its left slope
-  for (let r = 0; r < 6; r++) {
-    const hw = 6 - r;
-    PX.rect(cx - hw, top - 1 - r, hw * 2 + 1, 1, st.roof);
-    PX.px(cx - hw, top - 1 - r, st.hi);
-    if (r < 5) PX.px(cx - hw + 1, top - 1 - r, st.hi);
-  }
-  PX.px(cx, top - 3, PAL.sl2);               // attic window
-  _townWindow(T, x0 + 1, top + 1, 2, 2);
-  _townWindow(T, x0 + 8, top + 1, 2, 2);
-  PX.rect(cx - 1, top + 3, 2, 3, st.door);
-}
-
-// A longer house seen from the side: low roof running left to right
-function _townCottage(T, cx, base, st) {
-  const x0 = cx - 7, top = base - 6;
-  PX.rect(cx + 3, top - 6, 2, 4, PAL.br2);
-  PX.rect(cx + 4, top - 6, 1, 4, PAL.br4);
-  T.chimneys.push({ x: cx + 3, y: top - 7 });
-  PX.rect(x0, top, 15, 6, st.wall);
-  PX.rect(x0 + 13, top, 2, 6, st.shade);
-  PX.rect(x0, top, 15, 1, st.shade);          // shadow under the eaves
-  // Roof: a trapezoid, lighter along the ridge
-  for (let r = 0; r < 4; r++) {
-    PX.rect(x0 - 1 + r, top - 1 - r, 17 - r * 2, 1, r === 3 ? st.hi : st.roof);
-    PX.px(x0 - 1 + r, top - 1 - r, st.hi);
-  }
-  _townWindow(T, x0 + 1, top + 2, 2, 2);
-  _townWindow(T, x0 + 9, top + 2, 2, 2);
-  _townWindow(T, x0 + 12, top + 2, 2, 2);
-  PX.rect(x0 + 5, top + 2, 2, 4, st.door);
-}
-
-// A far-away house on the upper terrace: just walls, roof and one window
-function _townFarHouse(T, cx, base, st) {
-  PX.rect(cx - 3, base - 4, 7, 4, st.wall);
-  PX.rect(cx + 2, base - 4, 2, 4, st.shade);
-  PX.rect(cx - 4, base - 5, 9, 1, st.roof);
-  PX.rect(cx - 3, base - 6, 7, 1, st.roof);
-  PX.rect(cx - 1, base - 7, 3, 1, st.hi);
-  PX.px(cx - 4, base - 5, st.hi);
-  PX.px(cx - 3, base - 6, st.hi);
-  _townWindow(T, cx - 2, base - 3, 1, 2);
-  PX.rect(cx, base - 2, 1, 2, st.door);
-}
-
-// ── Main Street shops ────────────────────────────────
-
-// The Superette: cream shop, orange sign, red-and-white striped awning.
-// x is its left edge; it is 45 wide and 13 tall.
-function _townSuperette(T, x, base) {
-  const w = 45, top = base - 13;
-  PX.rect(x, top, w, 13, PAL.cream);
-  PX.rect(x + w - 1, top + 7, 1, 6, PAL.ta1);
-  // Sign board
-  PX.rect(x, top, w, 7, PAL.or3);
-  PX.rect(x, top, w, 1, PAL.or2);
-  PX.text('SUPERETTE', x + 23, top - 1, { color: PAL.white, align: 'center' });
-  // Shop window either side of the door
-  _townWindow(T, x + 2, top + 9, 19, 3, 'shop');
-  _townWindow(T, x + 24, top + 9, 19, 3, 'shop');
-  PX.rect(x + 11, top + 9, 1, 3, PAL.cream);
-  PX.rect(x + 33, top + 9, 1, 3, PAL.cream);
-  PX.rect(x + 21, top + 9, 3, 4, PAL.wo3);
-  PX.rect(x, top + 12, 21, 1, PAL.ta2);
-  PX.rect(x + 24, top + 12, 21, 1, PAL.ta2);
-  // Awning: stripes two pixels wide that step sideways on each row,
-  // which is how a pixel artist draws a diagonal stripe
-  for (let r = 0; r < 2; r++) {
-    for (let i = -1; i <= w; i++) {
-      PX.px(x + i, top + 7 + r, ((i + r + 8) >> 1) & 1 ? PAL.re2 : PAL.white);
-    }
-  }
-  // Scalloped edge hanging below it
-  for (let i = -1; i <= w; i++) if (((i + 8) >> 1) & 1) PX.px(x + i, top + 9, PAL.re3);
-  // Utility pole beside the shop
-  PX.rect(x + w + 2, base - 13, 1, 13, PAL.wo3);
-  PX.rect(x + w, base - 12, 5, 1, PAL.wo4);
-}
-
-// Fiske's General Store: white shop, black sign with gold letters,
-// black awnings and a red door. 31 wide, 14 tall.
-function _townFiskes(T, x, base) {
-  const w = 31, top = base - 14;
-  PX.rect(x, top, w, 14, PAL.white);
-  PX.rect(x + w - 1, top + 7, 1, 7, PAL.g1);
-  PX.rect(x, top, w, 7, PAL.black);
-  PX.rect(x, top, w, 1, PAL.g5);
-  PX.text("FISKE'S", x + 16, top - 1, { color: PAL.ye2, align: 'center' });
-  // Two display windows
-  _townWindow(T, x + 2, top + 9, 10, 4, 'shop');
-  _townWindow(T, x + 19, top + 9, 10, 4, 'shop');
-  PX.rect(x + 6, top + 9, 1, 4, PAL.white);
-  PX.rect(x + 24, top + 9, 1, 4, PAL.white);
-  // Black awnings over them
-  PX.rect(x + 1, top + 7, 12, 1, PAL.black);
-  PX.rect(x + 18, top + 7, 12, 1, PAL.black);
-  PX.rect(x + 1, top + 8, 12, 1, PAL.g5);
-  PX.rect(x + 18, top + 8, 12, 1, PAL.g5);
-  // Red door with a little window
-  PX.rect(x + 14, top + 8, 3, 6, PAL.re2);
-  PX.rect(x + 16, top + 8, 1, 6, PAL.re3);
-  PX.px(x + 14, top + 9, PAL.sl1);
-  PX.px(x + 15, top + 9, PAL.sl1);
-  PX.rect(x, top + 13, 14, 1, PAL.g2);
-  PX.rect(x + 17, top + 13, 14, 1, PAL.g2);
-  // Balloons are tied up just past the right-hand corner
-  T.balloons = { x: x + w + 1, y: base - 1 };
-}
-
-// CVS: white shop, red sign, glass front. 18 wide, 14 tall.
-function _townCVS(T, x, base) {
-  const w = 18, top = base - 14;
-  PX.rect(x, top, w, 14, PAL.white);
-  PX.rect(x + w - 1, top + 7, 1, 7, PAL.g1);
-  PX.rect(x, top, w, 7, PAL.re2);
-  PX.rect(x, top, w, 1, PAL.re1);
-  PX.rect(x, top + 6, w, 1, PAL.re3);
-  PX.text('CVS', x + 9, top - 1, { color: PAL.white, align: 'center' });
-  _townWindow(T, x + 2, top + 8, 14, 5, 'shop');
-  PX.rect(x + 5, top + 8, 1, 5, PAL.white);
-  PX.rect(x + 12, top + 8, 1, 5, PAL.white);
-  // Sliding door in the middle
-  PX.rect(x + 8, top + 9, 2, 5, PAL.g4);
-  PX.rect(x, top + 13, 8, 1, PAL.g2);
-  PX.rect(x + 10, top + 13, 8, 1, PAL.g2);
-}
-
-// ── Landmarks ────────────────────────────────────────
-
-// Town Hall: slate-blue colonial hall with a white pediment, arched
-// windows, two chimneys, a clock tower and a flagpole. cx is its middle.
-function _townHall(T, cx, base) {
-  const x0 = cx - 15, top = base - 14;
-  // Chimneys behind the pediment
-  for (const chx of [x0 + 3, x0 + 26]) {
-    PX.rect(chx, top - 6, 2, 6, PAL.br2);
-    PX.rect(chx + 1, top - 6, 1, 6, PAL.br4);
-    T.chimneys.push({ x: chx, y: top - 7 });
-  }
-  // Body
-  PX.rect(x0, top, 31, 14, PAL.sl1);
-  PX.rect(x0 + 28, top, 3, 14, PAL.sl2);
-  PX.rect(x0, top, 1, 14, PAL.white);
-  PX.rect(x0 + 30, top, 1, 14, PAL.g1);
-  PX.rect(x0, top + 7, 31, 1, PAL.sl2);          // floor line between storeys
-  // Upper arched windows
-  for (const dx of [-9, 0, 9]) _townArchWindow(T, cx + dx, top + 3, 3);
-  // Lower windows and the arched door
-  _townWindow(T, cx - 10, top + 9, 3, 3);
-  _townWindow(T, cx + 8, top + 9, 3, 3);
-  PX.rect(cx - 1, top + 9, 3, 4, PAL.wo4);
-  PX.px(cx, top + 8, PAL.wo4);
-  PX.px(cx + 1, top + 11, PAL.ye2);              // door knob
-  // Steps
-  PX.rect(x0 - 1, base - 1, 33, 1, PAL.g2);
-  PX.rect(cx - 3, base - 1, 7, 1, PAL.g1);
-  // Cornice and pediment
-  PX.rect(x0 - 1, top, 33, 1, PAL.white);
-  for (let r = 0; r < 6; r++) {
-    const hw = 16 - r * 3;
-    PX.rect(cx - hw, top - 1 - r, hw * 2 + 1, 1, PAL.sl1);
-    PX.rect(cx - hw, top - 1 - r, Math.min(3, hw * 2 + 1), 1, PAL.white);
-    PX.rect(cx + hw - 2, top - 1 - r, Math.min(3, hw + 1), 1, PAL.g1);
-  }
-  PX.rect(cx - 1, top - 3, 3, 2, PAL.sl3);       // round window in the gable
-  // Clock tower on the ridge
-  PX.rect(cx - 3, top - 13, 7, 7, PAL.sl1);
-  PX.rect(cx - 3, top - 13, 1, 7, PAL.white);
-  PX.rect(cx + 3, top - 13, 1, 7, PAL.sl2);
-  PX.circle(cx, top - 10, 2, PAL.white);
-  T.clock = { x: cx, y: top - 10 };
-  PX.rect(cx - 4, top - 14, 9, 1, PAL.sl3);
-  PX.rect(cx - 3, top - 15, 7, 1, PAL.sl3);
-  PX.rect(cx - 2, top - 16, 5, 1, PAL.sl3);
-  PX.rect(cx - 1, top - 17, 3, 1, PAL.sl3);
-  PX.rect(cx - 4, top - 14, 3, 1, PAL.sl2);
-  PX.px(cx - 3, top - 15, PAL.sl2);
-  PX.px(cx - 2, top - 16, PAL.sl2);
-  PX.px(cx, top - 18, PAL.sl3);
-  PX.px(cx, top - 19, PAL.ye3);
-  // Flagpole on the lawn to the left
-  const px0 = x0 - 5;
-  PX.rect(px0, base - 25, 1, 25, PAL.g3);
-  PX.px(px0, base - 26, PAL.ye3);
-  T.flag = { x: px0 + 1, y: base - 25 };
-}
-
-// The white church: columns, pediment, bell tower, tall spire, gold cross
-function _townChurch(T, cx, base) {
-  const x0 = cx - 8, top = base - 13;
-  // Tower and belfry go in first so the pediment covers the tower's foot
-  PX.rect(cx - 3, top - 10, 7, 9, PAL.white);
-  PX.rect(cx + 2, top - 10, 2, 9, PAL.g1);
-  PX.px(cx, top - 7, PAL.sl2);
-  PX.rect(cx - 4, top - 11, 9, 1, PAL.g1);
-  PX.rect(cx - 2, top - 17, 5, 6, PAL.white);
-  PX.rect(cx + 2, top - 17, 1, 6, PAL.g1);
-  PX.rect(cx - 1, top - 15, 3, 4, PAL.g4);       // louvres over the bell
-  PX.px(cx, top - 16, PAL.g4);
-  PX.rect(cx - 3, top - 18, 7, 1, PAL.g1);
-  // Spire, lit on the left
-  const spire = [2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0];
-  for (let r = 0; r < spire.length; r++) {
-    const hw = spire[r], y = top - 19 - r;
-    PX.rect(cx - hw, y, hw * 2 + 1, 1, PAL.g1);
-    PX.px(cx - hw, y, PAL.white);
-    if (hw > 0) PX.px(cx + hw, y, PAL.g2);
-  }
-  // Cross
-  PX.rect(cx, top - 33, 1, 4, PAL.ye3);
-  PX.rect(cx - 1, top - 32, 3, 1, PAL.ye3);
-  // Body: recessed wall with four white columns standing in front
-  PX.rect(x0, top, 17, 13, PAL.g1);
-  for (const dx of [0, 5, 10, 15]) PX.rect(x0 + dx, top + 2, 2, 11, PAL.white);
-  PX.rect(x0 + 16, top + 2, 1, 11, PAL.g2);
-  _townArchWindow(T, x0 + 3, top + 5, 4);
-  _townArchWindow(T, x0 + 13, top + 5, 4);
-  PX.rect(x0 + 7, top + 8, 3, 4, PAL.wo3);
-  PX.px(x0 + 8, top + 7, PAL.wo3);
-  // Steps, entablature and pediment
-  PX.rect(x0 - 1, base - 1, 19, 1, PAL.g2);
-  PX.rect(x0 - 1, top, 19, 1, PAL.white);
-  PX.rect(x0, top + 1, 17, 1, PAL.g2);
-  for (let r = 0; r < 5; r++) {
-    const hw = 9 - r * 2;
-    PX.rect(cx - hw, top - 1 - r, hw * 2 + 1, 1, PAL.white);
-    PX.rect(cx + hw - 1, top - 1 - r, 2, 1, PAL.g1);
-  }
-  PX.px(cx, top - 2, PAL.sl2);
-}
-
-// The stone arch bridge that carries the rail trail over the brook.
-// x0 is its left end, y the top row of the trail. In the back layer it
-// draws the arches; in the front layer only the railing, so that walkers
-// and bikes pass behind it.
-function _townBridge(x0, y, arches, front) {
-  const pitch = 9, w = arches * pitch + 3;
-  if (front) {
-    PX.rect(x0, y - 2, w, 1, PAL.g5);
-    for (let x = x0; x < x0 + w; x += 3) PX.px(x, y - 1, PAL.g5);
-    return;
-  }
-  // Stone body under the deck
-  PX.rect(x0, y + 2, w, 7, PAL.g2);
-  PX.rect(x0, y + 2, w, 1, PAL.g1);
-  for (let i = 0; i < arches; i++) {
-    const ax = x0 + 3 + i * pitch;                // left edge of the opening
-    PX.rect(ax + 2, y + 3, 2, 1, PAL.fo5);       // round top of the arch, in shadow
-    PX.rect(ax + 1, y + 4, 4, 1, PAL.fo5);
-    PX.rect(ax, y + 5, 6, 4, PAL.fo4);
-    PX.rect(ax - 1, y + 5, 1, 4, PAL.g3);        // shaded side of each pier
-    // The brook runs under the two middle arches
-    if (i === 3 || i === 4) {
-      PX.rect(ax, y + 7, 6, 2, PAL.wa3);
-      PX.rect(ax + 1, y + 7, 3, 1, PAL.wa2);
-    }
-  }
-  // Bushes at each end
-  PX.spr('townBush', x0 - 1, y + 10);
-  PX.spr('townBush', x0 + w + 1, y + 10);
-}
-
-// The rail trail tunnel: a stone arch in a grassy bank with its sign.
-// front = true draws only the right-hand half, so that walkers and bikes
-// coming along the trail slide in behind it and vanish into the dark.
-function _townTunnel(cx, y, front) {
-  const c = PX.c;
-  c.save();
-  c.beginPath();
-  // The bank stops at the trail; the front half starts at the portal's middle
-  if (front) c.rect(cx, 0, PX.W - cx + 2, y + 2);
-  else c.rect(0, 0, PX.W + 2, y + 2);
-  c.clip();
-  // Grassy bank
-  PX.ellipse(cx + 8, y + 1, 31, 14, PAL.gr4);
-  PX.ellipse(cx + 6, y + 1, 26, 12, PAL.gr3);
-  PX.ellipse(cx - 12, y - 4, 4, 3, PAL.fo3);
-  PX.ellipse(cx + 16, y - 7, 6, 3, PAL.fo3);
-  PX.ellipse(cx + 15, y - 8, 4, 2, PAL.fo2);
-  // Stone arch
-  PX.rect(cx - 5, y - 10, 11, 1, PAL.g1);
-  PX.rect(cx - 6, y - 9, 13, 1, PAL.g2);
-  PX.rect(cx - 7, y - 8, 15, 10, PAL.g2);
-  PX.rect(cx - 7, y - 8, 1, 10, PAL.g1);
-  PX.rect(cx + 7, y - 8, 1, 10, PAL.g3);
-  PX.rect(cx - 6, y - 4, 2, 1, PAL.g3);
-  PX.rect(cx + 5, y - 2, 2, 1, PAL.g3);
-  PX.px(cx, y - 10, PAL.white);                   // keystone
-  // Dark inside
-  PX.rect(cx - 2, y - 7, 5, 1, PAL.black);
-  PX.rect(cx - 3, y - 6, 7, 1, PAL.black);
-  PX.rect(cx - 4, y - 5, 9, 7, PAL.black);
-  PX.rect(cx - 4, y, 9, 2, PAL.g5);               // trail fading into the dark
-  // Vines hanging over the top
-  PX.rect(cx - 6, y - 11, 4, 1, PAL.fo2);
-  PX.rect(cx + 3, y - 11, 4, 1, PAL.fo2);
-  PX.px(cx - 5, y - 10, PAL.fo2);
-  PX.px(cx - 5, y - 9, PAL.fo3);
-  PX.px(cx + 5, y - 10, PAL.fo2);
-  c.restore();
-}
-
-// The green RAIL TRAIL sign on two posts above the tunnel
-function _townTrailSign(cx, y) {
-  const w = PX.measure('RAIL TRAIL') + 5;
-  const x = Math.min(PX.W - w - 1, cx - Math.floor(w / 2));
-  PX.rect(x + 3, y, 1, 8, PAL.wo3);
-  PX.rect(x + w - 4, y, 1, 8, PAL.wo3);
-  PX.panel(x, y - 8, w, 9, PAL.gr5, PAL.cream);
-  PX.text('RAIL TRAIL', x + Math.ceil(w / 2), y - 8, { color: PAL.white, align: 'center' });
-}
-
-// Lake Winthrop: a long oval of water tucked under the tree line
-function _townLake(T, cx, cy, rx) {
-  // Each row is [left, right] measured from the middle, top row first
-  const rows = [[-rx + 6, rx - 9], [-rx, rx - 3], [-rx, rx], [-rx, rx - 2], [-rx + 3, rx - 8]];
-  for (let r = 0; r < rows.length; r++) {
-    const xa = cx + rows[r][0], xb = cx + rows[r][1];
-    PX.rect(xa - 1, cy - 2 + r, xb - xa + 3, 2, PAL.gr5);                 // shadowed bank
-    PX.rect(xa, cy - 2 + r, xb - xa + 1, 1, r === 0 ? PAL.wa3 : PAL.wa2);   // far shore reflects the trees
-  }
-  PX.rect(cx + rows[1][0] + 2, cy - 1, rx, 1, PAL.wa3);
-  PX.rect(cx - 6, cy + 3, 11, 1, PAL.ta1);          // a strip of sandy beach
-  PX.spr('townReeds', cx + rx - 2, cy + 2);
-  T.lake = { x0: cx - rx + 5, x1: cx + rx - 9, y: cy };
-}
-
-// ── Painting the still parts of the town ─────────────
-
-// Makes an art-pixel canvas the size of the sky above the horizon
-function _townCanvas() {
-  const cv = document.createElement('canvas');
-  cv.width = PX.W;
-  cv.height = PX.HOR + 3;
-  return cv;
-}
-
-// Paints the whole town once. Called again only if the art grid changes
-// (a different screen size) or the pixel font finishes loading.
-function _buildTown(key) {
-  const W = PX.W, H0 = PX.HOR, Y = TOWN_ROWS;
-  const T = {
-    key, font: PX.fonts.small,
-    back: _townCanvas(), front: _townCanvas(), lights: _townCanvas(), glow: _townCanvas(),
-    chimneys: [], windows: [], lamps: [],
-    balloons: null, flag: null, clock: null, lake: null,
-    tunnelX: W - 26,
+// Collects the faces of many textured boxes and bakes them into one mesh
+// per block texture. The texture repeats once per block and is lined up
+// with the world, so neighbouring boxes tile without a seam. Faces nobody
+// can see from the garden (undersides, backs, the far sides of things off
+// to the left and right) are never made.
+function _townBatcher() {
+  const batches = new Map();
+  const get = (name) => {
+    let b = batches.get(name);
+    if (!b) { b = { pos: [], nor: [], uv: [], idx: [], n: 0 }; batches.set(name, b); }
+    return b;
   };
-  const rnd = _townRand(42);
-  const edges = _townSchoolEdges();
-  const seenL = edges.l;                    // the school starts here...
-  const seenR = edges.r;                    // ...and ends here
-  const backY = H0 + Y.back, frontY = H0 + Y.front, trailY = H0 + Y.trail;
-
-  // ════════════════════════════════════════════════════
-  //  BACK LAYER: everything behind the rail trail's travellers
-  // ════════════════════════════════════════════════════
-  PX.withTarget(T.back.getContext('2d'), () => {
-
-    // 1. Far hill, hazy blue-green, with a paler rim where the sun catches it
-    const hillCol = PX.mix(PAL.fo3, PAL.sk3, 0.5);
-    const hillRim = PX.mix(PAL.fo2, PAL.sk2, 0.55);
-    // (behind the school it sinks out of sight, so that only sky and a few
-    // treetops show over the roofs instead of a band of hill)
-    for (let x = 0; x < W; x++) {
-      const t = x / W;
-      const behind = constrain((x - seenL) / 24, 0, 1) * constrain((seenR - x) / 24, 0, 1);
-      const y = H0 + Y.hill + Math.round(4 * Math.sin(t * 6.1 + 0.8) + 2 * Math.sin(t * 14.3 + 2.1) + 8 * behind);
-      if (y >= H0 + Y.upper) continue;
-      PX.rect(x, y, 1, H0 + Y.upper - y, hillCol);
-      PX.px(x, y, hillRim);
+  const quad = (name, p, nx, ny, nz, uv) => {
+    const b = get(name), i = b.n;
+    for (let k = 0; k < 4; k++) {
+      b.pos.push(p[k][0], p[k][1], p[k][2]);
+      b.nor.push(nx, ny, nz);
+      b.uv.push(uv[k][0], uv[k][1]);
     }
+    b.idx.push(i, i + 1, i + 2, i, i + 2, i + 3);
+    b.n += 4;
+  };
+  const B = {
+    top(name, x0, x1, z0, z1, y) {
+      quad(name, [[x0, y, z1], [x1, y, z1], [x1, y, z0], [x0, y, z0]], 0, 1, 0, [[x0, -z1], [x1, -z1], [x1, -z0], [x0, -z0]]);
+    },
+    front(name, x0, x1, y0, y1, z) {
+      quad(name, [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], 0, 0, 1, [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
+    },
+    right(name, z0, z1, y0, y1, x) {
+      quad(name, [[x, y0, z1], [x, y0, z0], [x, y1, z0], [x, y1, z1]], 1, 0, 0, [[-z1, y0], [-z0, y0], [-z0, y1], [-z1, y1]]);
+    },
+    left(name, z0, z1, y0, y1, x) {
+      quad(name, [[x, y0, z0], [x, y0, z1], [x, y1, z1], [x, y1, z0]], -1, 0, 0, [[z0, y0], [z1, y0], [z1, y1], [z0, y1]]);
+    },
+    // A box from (x0, y0, z0) to (x1, y1, z1); z1 is its front.
+    // tex = block name, or { top, side } (side also does the front).
+    box(tex, x0, x1, y0, y1, z0, z1) {
+      const side = typeof tex === 'string' ? tex : tex.side;
+      const top = typeof tex === 'string' ? tex : (tex.top || tex.side);
+      B.top(top, x0, x1, z0, z1, y1);
+      B.front(side, x0, x1, y0, y1, z1);
+      if (x0 > -3) B.left(side, z0, z1, y0, y1, x0);
+      if (x1 < 3) B.right(side, z0, z1, y0, y1, x1);
+    },
+    // Bakes everything collected so far into meshes inside `group`.
+    bake(group) {
+      for (const [name, b] of batches) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(b.pos), 3));
+        g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(b.nor), 3));
+        g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(b.uv), 2));
+        g.setIndex(new THREE.BufferAttribute(new (b.n > 65535 ? Uint32Array : Uint16Array)(b.idx), 1));
+        const m = new THREE.Mesh(g, G3.blockMat(name));
+        m.castShadow = false; m.receiveShadow = true;
+        group.add(m);
+      }
+    },
+  };
+  return B;
+}
 
-    // 2. Tree line: a dark back row, then a slightly lighter front row
-    const fy = H0 + Y.forest;
-    PX.rect(0, fy + 1, W, Y.upper - Y.forest, PAL.fo5);
-    for (let x = -3; x < W + 6; x += 3 + Math.floor(rnd() * 4)) {
-      if (rnd() < 0.55) _townConifer(x, fy + 3, 7 + Math.floor(rnd() * 5), 2 + Math.floor(rnd() * 2), PAL.fo5, null);
-      else _townCrown(x, fy - Math.floor(rnd() * 2), 3 + Math.floor(rnd() * 2), 3, PAL.fo5, null);
+// ── The lie of the land ──────────────────────────────
+
+// Lake Winthrop: one [left, right] pair per row of blocks, back row first
+const TOWN_LAKE = { z0: -46, y: 2.8, rows: [[-56, -47], [-58, -44], [-58, -43], [-58, -43], [-57, -43], [-54, -43]] };
+
+// The height of the ground (whole blocks) at a point, and the level of
+// any water standing on it (0 = dry). Flat at the front; a bank up to
+// Main Street; another up to the rail trail; then the wooded ridge.
+function _townGround(x, z, out) {
+  let h = 0, water = 0;
+  const ax = Math.abs(x);
+  if (z < -17) h = 1;
+  if (z < -18) h = 2;
+  // The brook's valley cuts down through the upper terrace (the bridge spans it)
+  const valley = x > -51 && x < -40 && z > -38;
+  if (!valley) {
+    if (z < -31) h = 3;
+    // The ridge: only out to the sides, so that there is sky over the school
+    const side = Math.max(0, Math.min(1, (ax - 16) / 22));
+    const wob = (Math.sin(x * 0.21 + 1) * 2 + Math.sin(x * 0.083 + 0.4) * 3) * side;
+    let ridge = -42 - wob * 0.6 - (1 - side) * 10;
+    if (x > -60 && x < -41) ridge = Math.min(ridge, -46.5);     // behind the lake
+    if (z < ridge) h = 4;
+    // The lake, and the channel where the brook leaves it
+    const row = Math.floor(z) - TOWN_LAKE.z0;
+    if (row >= 0 && row < TOWN_LAKE.rows.length && x > TOWN_LAKE.rows[row][0] && x < TOWN_LAKE.rows[row][1]) { h = 2; water = TOWN_LAKE.y; }
+    if (x > -45 && x < -44 && z > -40 && z < -38) { h = 2; water = TOWN_LAKE.y; }
+    // The hillock the rail trail tunnels into
+    if (z < -37) {
+      const dx = Math.abs(x - TOWN.TUNNEL_X);
+      if (dx < 4 && z > -43) h = Math.max(h, 4);
+      if (dx < 3 && z > -42) h = Math.max(h, 5);
+      if (dx < 2 && z > -41) h = Math.max(h, 6);
     }
-    for (let x = -2; x < W + 6; x += 4 + Math.floor(rnd() * 4)) {
-      if (rnd() < 0.4) _townConifer(x, fy + 5, 6 + Math.floor(rnd() * 4), 2, PAL.fo4, PAL.fo3);
-      else _townCrown(x, fy + 2 + Math.floor(rnd() * 2), 3 + Math.floor(rnd() * 2), 2 + Math.floor(rnd() * 2), PAL.fo4, PAL.fo3);
+  } else if (z < -27) {
+    // The brook runs down the valley into a pool below the bridge
+    h = 1;
+    if (x > -45 && x < -44 && z < -32) water = 1.07;
+    if (x > -47 && x < -42 && z > -33 && z < -29) water = 1.07;
+  }
+  if (out) { out.h = h; out.water = water; }
+  return h;
+}
+
+// Turns the height map into terraces: flat grass tops and one-block banks.
+function _townTerrain(B) {
+  const X0 = -72, X1 = 72, Z0 = -48, Z1 = -17, nx = X1 - X0, nz = Z1 - Z0;
+  const H = new Int8Array(nx * nz), W = new Float32Array(nx * nz), o = {};
+  for (let iz = Z0; iz < Z1; iz++) for (let ix = X0; ix < X1; ix++) {
+    _townGround(ix + 0.5, iz + 0.5, o);
+    H[(iz - Z0) * nx + ix - X0] = o.h;
+    W[(iz - Z0) * nx + ix - X0] = o.water;
+  }
+  const at = (ix, iz) => (iz >= Z1 ? 0 : H[(iz - Z0) * nx + ix - X0]);
+  const wat = (ix, iz) => W[(iz - Z0) * nx + ix - X0];
+  // A bank: grass over earth for the top block, bare earth below it
+  const bank = (face, a0, a1, lo, hi, c) => {
+    B[face]('grass_side', a0, a1, hi - 1, hi, c);
+    if (hi - 1 > lo) B[face]('dirt', a0, a1, lo, hi - 1, c);
+  };
+  for (let iz = Z0; iz < Z1; iz++) {
+    // Tops, in runs of the same height (alternate terraces are a lighter green)
+    for (let ix = X0; ix < X1;) {
+      const h = at(ix, iz), w = wat(ix, iz);
+      let e = ix + 1;
+      while (e < X1 && at(e, iz) === h && wat(e, iz) === w) e++;
+      if (w) B.top('water', ix, e, iz, iz + 1, w);
+      else if (h > 0) B.top(h % 2 ? 'grass_light' : 'grass', ix, e, iz, iz + 1, h);
+      ix = e;
     }
-    PX.rect(0, fy + 4, W, Y.upper - Y.forest - 4, PAL.fo4);
-
-    // 3. Upper terrace: meadow between the woods and the town
-    PX.rect(0, H0 + Y.upper, W, Y.main - Y.upper + 3, PAL.gr4);
-    for (let x = 0; x < W; x++) {
-      // a ragged top edge, so the meadow does not meet the woods in a ruled line
-      if (Math.sin(x * 0.9) + Math.sin(x * 0.37 + 1) > 0.6) PX.px(x, H0 + Y.upper, PAL.fo4);
+    // Banks that face the garden
+    for (let ix = X0; ix < X1;) {
+      const h = at(ix, iz), lo = at(ix, iz + 1);
+      let e = ix + 1;
+      while (e < X1 && at(e, iz) === h && at(e, iz + 1) === lo) e++;
+      if (h > lo) bank('front', ix, e, lo, h, iz + 1);
+      ix = e;
     }
-
-    // Lake Winthrop, far left where the school does not cover it
-    _townLake(T, 20, H0 + Y.upper + 1, 27);
-
-    // Fields: hay and green crops
-    const fieldCols = [[PAL.ye1, PAL.ta2], [PAL.gr2, PAL.gr3], [PAL.ta1, PAL.gr2]];
-    _townField(W - 142, H0 + Y.upper + 1, 20, 5, PAL.ye1, PAL.ta2);
-    for (let x = seenL + 30, i = 0; x < seenR - 60; x += 46 + Math.floor(rnd() * 30), i++) {
-      const fc = fieldCols[i % fieldCols.length];
-      _townField(x, H0 + Y.upper + 1 + (i % 2), 16 + Math.floor(rnd() * 10), 4 + (i % 2), fc[0], fc[1]);
+  }
+  // Banks that face left or right (only the ones that can be seen)
+  for (let ix = X0; ix < X1; ix++) {
+    for (let iz = Z0; iz < Z1;) {
+      const h = at(ix, iz), r = ix + 1 < X1 ? at(ix + 1, iz) : h, l = ix > X0 ? at(ix - 1, iz) : h;
+      let e = iz + 1;
+      while (e < Z1 && at(ix, e) === h && (ix + 1 < X1 ? at(ix + 1, e) : h) === r && (ix > X0 ? at(ix - 1, e) : h) === l) e++;
+      if (h > r && ix + 1 < 3) bank('right', iz, e, r, h, ix + 1);
+      if (h > l && ix > -3) bank('left', iz, e, l, h, ix);
+      iz = e;
     }
+  }
+  // The brook tumbles from the lake's channel down into the valley
+  B.front('water', -45, -44, 1.07, TOWN_LAKE.y, -37.98);
+}
 
-    // A few far-off houses and trees in front of the woods
-    const farX = [W * 0.58, W * 0.68, W * 0.78, W - 72];
-    for (let i = 0; i < farX.length; i++) {
-      _townFarHouse(T, Math.round(farX[i]), trailY, TOWN_HOUSES[(i * 2 + 3) % TOWN_HOUSES.length]);
-    }
-    for (const tx of [W * 0.20, W * 0.24, W * 0.28, W * 0.63, W * 0.75, W - 84, W - 62]) {
-      PX.spr(Math.round(tx) % 2 ? 'townPine' : 'townTree', Math.round(tx), trailY);
-    }
+// ── Building the town ────────────────────────────────
 
-    // The tunnel's bank and arch (the right half is repeated in the front layer)
-    _townTunnel(T.tunnelX, trailY, false);
+// Builds every still thing in the town, once. Returns the record that
+// drawTown() keeps: the group, and the few parts that move or glow.
+function _buildTown() {
+  const T = {
+    group: new THREE.Group(), font: PX.fonts.bold,
+    signs: [], chimneys: [], lamps: [],
+    clockHand: null, flag: null, balloons: [], sparkles: [], smoke: null,
+    glow: -1,
+  };
+  const B = _townBatcher();
+  const col = [];                    // plain coloured boxes -> one merged mesh
+  const lit = [], shop = [], lampHeads = [], pools = [];
+  const rnd = _townRand(42), litRnd = _townRand(7);
+  const Y1 = TOWN.MAIN_Y, Y2 = TOWN.TRAIL_Y;
 
-    // 4. Rail trail: stone dust, lighter along its top edge
-    PX.rect(0, trailY, T.tunnelX + 4, 1, PAL.ta1);
-    PX.rect(0, trailY + 1, T.tunnelX + 4, 1, PAL.ta2);
-    PX.rect(T.tunnelX - 3, trailY, 8, 2, PAL.g5);
-
-    // 5. Main town terrace, with a sunlit lip that rises and falls a little
-    for (let x = 0; x < W; x++) {
-      const y = H0 + Y.main + Math.round(Math.sin(x / W * 9 + 1.3) + 0.6 * Math.sin(x / W * 23));
-      PX.rect(x, y, 1, H0 + 3 - y, PAL.gr3);
-      PX.px(x, y, PAL.gr2);
-    }
-    // Tufts of darker grass so the slope is not one flat colour
-    for (let i = 0; i < W / 3; i++) {
-      const gx = Math.floor(rnd() * W), gy = H0 + Y.main + 3 + Math.floor(rnd() * 9);
-      PX.rect(gx, gy, 2, 1, PAL.gr4);
-    }
-
-    // The brook runs out of the lake, under the bridge and down the slope
-    const brookX = 36;
-    for (let r = 0; r < 14; r++) {
-      const bx = brookX + Math.round(Math.sin(r * 0.8) * 1.5);
-      PX.rect(bx, trailY + 9 + r, 2, 1, PAL.wa2);
-      PX.px(bx + 2, trailY + 9 + r, PAL.gr4);
-    }
-
-    // The bridge itself
-    _townBridge(1, trailY, 8, false);
-
-    // Fields on the slope behind the school
-    for (let x = seenL + 50, i = 1; x < seenR - 40; x += 60 + Math.floor(rnd() * 30), i++) {
-      const fc = fieldCols[i % fieldCols.length];
-      _townField(x, H0 + Y.main + 3, 18 + Math.floor(rnd() * 8), 5, fc[0], fc[1]);
-    }
-
-    // 6. Roads. Main Street runs the full width; a side street drops from
-    //    it to the front street on the right of the school.
-    const road = (y) => {
-      PX.rect(0, y - 1, W, 1, PAL.g2);            // far sidewalk
-      PX.rect(0, y, W, 5, PAL.g4);
-      PX.rect(0, y, W, 1, PAL.g5);                // shadow of the kerb
-      PX.rect(0, y + 5, W, 1, PAL.g2);            // near sidewalk
-      for (let x = 2; x < W; x += 8) PX.rect(x, y + 2, 4, 1, PAL.ye2);
-      for (let x = 5; x < W; x += 7) { PX.px(x, y - 1, PAL.g3); PX.px(x + 3, y + 5, PAL.g3); }
-    };
-    const sideX = W - 68;
-    PX.rect(sideX - 1, H0 + Y.road + 6, 8, Y.road2 - Y.road - 6, PAL.g2);
-    PX.rect(sideX, H0 + Y.road + 5, 6, Y.road2 - Y.road - 5, PAL.g4);
-    road(H0 + Y.road);
-    road(H0 + Y.road2);
-    PX.rect(sideX, H0 + Y.road + 5, 6, 1, PAL.g4);
-    PX.rect(sideX, H0 + Y.road2 - 1, 6, 1, PAL.g4);
-    // Crosswalks where people cross to the shops and the Town Hall
-    for (const cxw of [33, sideX - 6]) {
-      for (let r = 0; r < 5; r += 2) PX.rect(cxw, H0 + Y.road + r, 3, 1, PAL.g1);
-    }
-    PX.rect(0, H0 - 1, W, 4, PAL.gr3);
+  // A plain coloured box from corner to corner
+  const C = (x0, x1, y0, y1, z0, z1, c, list) => (list || col).push({
+    x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: (z0 + z1) / 2, w: x1 - x0, h: y1 - y0, d: z1 - z0, c,
   });
+  // A window on a wall whose face is at z: a white frame and a pane that
+  // lights up at night. kind: 'home' (a few stay dark) or 'shop'.
+  const win = (x0, x1, y0, y1, z, kind, frame) => {
+    if (frame !== null) C(x0 - 0.07, x1 + 0.07, y0 - 0.07, y1 + 0.07, z, z + 0.04, frame || PAL.white);
+    const list = kind === 'shop' ? shop : (litRnd() < 0.25 ? col : lit);
+    C(x0, x1, y0, y1, z, z + 0.08, kind === 'shop' ? PAL.sk3 : PAL.sl2, list);
+  };
+  const ground = (x, z) => _townGround(Math.floor(x) + 0.5, Math.floor(z) + 0.5);
+
+  // ── Trees ──
+  // A round tree: a log post under a cube of leaves with a smaller cube on top
+  const tree = (x, z, s, light, y) => {
+    if (y === undefined) y = ground(x, z);
+    const leaf = light ? 'leaves_light' : 'leaves';
+    B.box('log', x - 0.2 * s, x + 0.2 * s, y, y + 1.0 * s, z - 0.2 * s, z + 0.2 * s);
+    B.box(leaf, x - s, x + s, y + 1.0 * s, y + 2.2 * s, z - s, z + s);
+    B.box(leaf, x - 0.5 * s, x + 0.5 * s, y + 2.2 * s, y + 2.7 * s, z - 0.5 * s, z + 0.5 * s);
+  };
+  // A pine: slabs of needles, each smaller than the one below
+  const pine = (x, z, s, y) => {
+    if (y === undefined) y = ground(x, z);
+    B.box('log', x - 0.15 * s, x + 0.15 * s, y, y + 0.4 * s, z - 0.15 * s, z + 0.15 * s);
+    const tiers = [0.9, 0.65, 0.4, 0.15];
+    for (let i = 0; i < tiers.length; i++) {
+      const r = tiers[i] * s, y0 = y + (0.4 + i * 0.55) * s;
+      B.box('leaves_pine', x - r, x + r, y0, y0 + 0.55 * s, z - r, z + r);
+    }
+  };
+  const bush = (x, z, y) => {
+    if (y === undefined) y = ground(x, z);
+    B.box('leaves_light', x - 0.5, x + 0.5, y, y + 0.6, z - 0.4, z + 0.4);
+    B.box('leaves_light', x - 0.25, x + 0.25, y + 0.6, y + 0.85, z - 0.25, z + 0.25);
+  };
+
+  // ── Street furniture ──
+  const lamp = (x, z, y) => {
+    C(x - 0.07, x + 0.07, y, y + 1.9, z - 0.07, z + 0.07, PAL.g5);
+    C(x - 0.2, x + 0.2, y + 2.2, y + 2.28, z - 0.2, z + 0.2, PAL.g5);
+    C(x - 0.15, x + 0.15, y + 1.9, y + 2.2, z - 0.15, z + 0.15, PAL.ye1, lampHeads);
+    // the pool of light it throws on the ground
+    C(x - 1.4, x + 1.4, y + 0.09, y + 0.1, z - 0.3, z + 1.3, PAL.ye2, pools);
+    C(x - 0.8, x + 0.8, y + 0.1, y + 0.11, z - 0.7, z + 1.7, PAL.ye2, pools);
+  };
+  // A road along x: asphalt between two sidewalks, with a dashed centre line
+  const road = (y, z0, z1) => {
+    B.box('asphalt', -72, 72, y, y + 0.06, z0, z1);
+    B.box('pavement', -72, 72, y, y + 0.12, z1, z1 + 0.75);
+    B.box('pavement', -72, 72, y, y + 0.12, z0 - 0.75, z0);
+    const zc = (z0 + z1) / 2;
+    for (let x = -71; x < 71; x += 2) C(x, x + 0.9, y + 0.06, y + 0.075, zc - 0.06, zc + 0.06, PAL.ye2);
+  };
+  const crosswalk = (x, y, z0, z1) => {
+    for (let z = z0 + 0.2; z < z1 - 0.3; z += 0.6) C(x, x + 1.2, y + 0.06, y + 0.075, z, z + 0.3, PAL.g1);
+  };
+  const chimney = (x, z, y0, y1) => {
+    B.box('brick', x - 0.25, x + 0.25, y0, y1, z - 0.25, z + 0.25);
+    T.chimneys.push({ x, y: y1, z });
+  };
+
+  // ── Houses ──
+  // A house seen gable-end on: square walls under a stepped triangle of
+  // roof. (cx, zf) is the middle of its doorstep, y the ground.
+  const house = (cx, zf, y, n) => {
+    const st = TOWN_HOUSES[n], wall = 'town_wall' + n, roof = 'town_roof' + n;
+    const w = 3.5, wh = 2, d = 3.5;
+    B.box(wall, cx - w / 2, cx + w / 2, y, y + wh, zf - d, zf);
+    for (let i = 0; i < 4; i++) {
+      const hw = w / 2 + 0.25 - i * 0.5, y0 = y + wh + i * 0.4;
+      B.box(roof, cx - hw, cx + hw, y0, y0 + 0.4, zf - d - 0.2, zf + 0.25);
+      // the gable wall shows inside the roof's edge
+      if (hw > 0.5) B.front(wall, cx - hw + 0.5, cx + hw - 0.5, y0, y0 + 0.4, zf + 0.26);
+    }
+    chimney(cx + 1.0, zf - 2.2, y + wh + 0.4, y + wh + 2.1);
+    C(cx - 0.2, cx + 0.2, y + wh + 0.3, y + wh + 0.7, zf + 0.26, zf + 0.3, PAL.sl2);   // attic window
+    win(cx - 1.4, cx - 0.8, y + 0.9, y + 1.5, zf);
+    win(cx + 0.8, cx + 1.4, y + 0.9, y + 1.5, zf);
+    C(cx - 0.3, cx + 0.3, y, y + 1.25, zf, zf + 0.06, st.door);
+    C(cx - 0.5, cx + 0.5, y, y + 0.1, zf, zf + 0.35, PAL.g2);                           // doorstep
+  };
+  // A longer house seen from the side: a low roof running left to right
+  const cottage = (cx, zf, y, n) => {
+    const st = TOWN_HOUSES[n], wall = 'town_wall' + n, roof = 'town_roof' + n;
+    const w = 5, wh = 1.75, d = 3.5;
+    B.box(wall, cx - w / 2, cx + w / 2, y, y + wh, zf - d, zf);
+    for (let i = 0; i < 3; i++) {
+      const y0 = y + wh + i * 0.4;
+      B.box(roof, cx - w / 2 - 0.25, cx + w / 2 + 0.25, y0, y0 + 0.4, zf - d - 0.25 + i * 0.65, zf + 0.25 - i * 0.65);
+    }
+    chimney(cx + 1.4, zf - 1.75, y + wh + 0.8, y + wh + 2.0);
+    win(cx - 2.1, cx - 1.5, y + 0.75, y + 1.35, zf);
+    win(cx + 0.5, cx + 1.1, y + 0.75, y + 1.35, zf);
+    win(cx + 1.5, cx + 2.1, y + 0.75, y + 1.35, zf);
+    C(cx - 0.9, cx - 0.3, y, y + 1.25, zf, zf + 0.06, st.door);
+    C(cx - 1.1, cx - 0.1, y, y + 0.1, zf, zf + 0.35, PAL.g2);
+  };
+  // A far-away house on the upper terrace: walls, roof, one window
+  const farHouse = (cx, zf, y, n) => {
+    const st = TOWN_HOUSES[n], wall = 'town_wall' + n, roof = 'town_roof' + n;
+    B.box(wall, cx - 1.25, cx + 1.25, y, y + 1.25, zf - 2.5, zf);
+    for (let i = 0; i < 3; i++) {
+      const hw = 1.5 - i * 0.5, y0 = y + 1.25 + i * 0.35;
+      B.box(roof, cx - hw, cx + hw, y0, y0 + 0.35, zf - 2.7, zf + 0.2);
+      if (hw > 0.5) B.front(wall, cx - hw + 0.4, cx + hw - 0.4, y0, y0 + 0.35, zf + 0.21);
+    }
+    win(cx - 0.9, cx - 0.4, y + 0.5, y + 1.0, zf, 'home', null);
+    C(cx + 0.3, cx + 0.75, y, y + 0.9, zf, zf + 0.05, st.door);
+  };
+
+  // ── Shops ──
+  // The painted board over a shop front: `bw` blocks wide, its bottom at y
+  const sign = (id, x0, y, z, bw) => {
+    const sp = TOWN_ART.SIGNS[id], bh = bw * sp.h / sp.w;
+    const tex = G3.pixelTex(null, sp.w, sp.h, g => TOWN_ART.paintSign(g, sp));
+    // It is lit from the front after dark, like a real shop sign
+    const mat = new THREE.MeshLambertMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0 });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(bw, bh), mat);
+    m.position.set(x0 + bw / 2, y + bh / 2, z);
+    T.group.add(m);
+    T.signs.push({ sp, tex, mat });
+    return bh;
+  };
+
+  // The Superette: cream shop, orange sign, red-and-white striped awning.
+  const superette = (x0, zf, y) => {
+    const w = 10;
+    B.box('town_cream', x0, x0 + w, y, y + 3, zf - 4, zf);
+    C(x0 - 0.1, x0 + w + 0.1, y + 3, y + 3.12, zf - 4, zf + 0.1, PAL.g4);                 // flat roof
+    C(x0 - 0.05, x0 + w + 0.05, y + 1.5, y + 3.05, zf, zf + 0.14, PAL.or3);              // sign board
+    sign('superette', x0, y + 1.52, zf + 0.15, w);
+    win(x0 + 0.5, x0 + 2.4, y + 0.3, y + 1.2, zf, 'shop', PAL.cream);
+    win(x0 + 2.6, x0 + 4.5, y + 0.3, y + 1.2, zf, 'shop', PAL.cream);
+    win(x0 + 5.5, x0 + 7.4, y + 0.3, y + 1.2, zf, 'shop', PAL.cream);
+    win(x0 + 7.6, x0 + 9.5, y + 0.3, y + 1.2, zf, 'shop', PAL.cream);
+    C(x0 + 4.65, x0 + 5.35, y, y + 1.25, zf, zf + 0.06, PAL.wo3);                          // door
+    C(x0, x0 + w, y, y + 0.22, zf, zf + 0.05, PAL.ta2);                                    // kick board
+    // Awning: stripes half a block wide, with a lip hanging down in front
+    for (let i = 0; i < w * 2; i++) {
+      const c = i % 2 ? PAL.white : PAL.re2, xa = x0 + i * 0.5;
+      C(xa, xa + 0.5, y + 1.36, y + 1.5, zf, zf + 0.7, c);
+      C(xa, xa + 0.5, y + 1.2, y + 1.36, zf + 0.6, zf + 0.7, i % 2 ? PAL.g1 : PAL.re3);
+    }
+    // Utility pole beside the shop
+    C(x0 + w + 0.6, x0 + w + 0.78, y, y + 3.6, zf - 0.4, zf - 0.22, PAL.wo3);
+    C(x0 + w + 0.1, x0 + w + 1.3, y + 3.2, y + 3.32, zf - 0.4, zf - 0.22, PAL.wo4);
+  };
+
+  // Fiske's General Store: white shop, black sign with gold letters,
+  // black awnings, a red door, and balloons tied up outside.
+  const fiskes = (x0, zf, y) => {
+    const w = 7.5;
+    B.box('planks_white', x0, x0 + w, y, y + 3, zf - 4, zf);
+    C(x0 - 0.1, x0 + w + 0.1, y + 3, y + 3.12, zf - 4, zf + 0.1, PAL.g4);
+    C(x0 - 0.05, x0 + w + 0.05, y + 1.5, y + 3.05, zf, zf + 0.14, PAL.black);
+    sign('fiskes', x0, y + 1.52, zf + 0.15, w);
+    win(x0 + 0.5, x0 + 1.6, y + 0.3, y + 1.2, zf, 'shop');
+    win(x0 + 1.8, x0 + 2.9, y + 0.3, y + 1.2, zf, 'shop');
+    win(x0 + 4.6, x0 + 5.7, y + 0.3, y + 1.2, zf, 'shop');
+    win(x0 + 5.9, x0 + 7.0, y + 0.3, y + 1.2, zf, 'shop');
+    for (const xa of [x0 + 0.3, x0 + 4.4]) {                                               // black awnings
+      C(xa, xa + 2.8, y + 1.34, y + 1.48, zf, zf + 0.6, PAL.black);
+      C(xa, xa + 2.8, y + 1.22, y + 1.34, zf + 0.5, zf + 0.6, PAL.g5);
+    }
+    C(x0 + 3.35, x0 + 4.15, y, y + 1.4, zf, zf + 0.06, PAL.re2);                           // red door
+    C(x0 + 3.5, x0 + 4.0, y + 0.85, y + 1.2, zf + 0.06, zf + 0.08, PAL.sl1);
+    C(x0, x0 + w, y, y + 0.2, zf, zf + 0.05, PAL.g2);
+    // Balloons bob on their strings just past the right-hand corner
+    const bx = x0 + w + 0.5, bz = zf + 0.5;
+    const cols = [PAL.re2, PAL.ye2, PAL.bl2];
+    for (let i = 0; i < 3; i++) {
+      const dx = (i - 1) * 0.42, top = y + 1.7 + (i === 1 ? 0.5 : 0);
+      C(bx + dx * 0.5 - 0.02, bx + dx * 0.5 + 0.02, y, y + top - y, bz - 0.02, bz + 0.02, PAL.g1);
+      const m = G3.box(0.4, 0.45, 0.4, G3.mat(cols[i]), bx + dx, top + 0.2, bz);
+      m.castShadow = false;
+      m.userData.y = top + 0.2;
+      T.group.add(m);
+      T.balloons.push(m);
+    }
+  };
+
+  // CVS: white shop, red sign, glass front.
+  const cvs = (x0, zf, y) => {
+    const w = 4;
+    B.box('white', x0, x0 + w, y, y + 3, zf - 4, zf);
+    C(x0 - 0.1, x0 + w + 0.1, y + 3, y + 3.12, zf - 4, zf + 0.1, PAL.g4);
+    C(x0 - 0.05, x0 + w + 0.05, y + 1.5, y + 3.05, zf, zf + 0.14, PAL.re2);
+    sign('cvs', x0, y + 1.52, zf + 0.15, w);
+    win(x0 + 0.35, x0 + 1.6, y + 0.25, y + 1.3, zf, 'shop');
+    win(x0 + 2.4, x0 + 3.65, y + 0.25, y + 1.3, zf, 'shop');
+    C(x0 + 1.7, x0 + 2.3, y, y + 1.3, zf, zf + 0.06, PAL.g4);                              // sliding door
+    C(x0 + 1.98, x0 + 2.02, y, y + 1.3, zf + 0.06, zf + 0.07, PAL.g2);
+    C(x0, x0 + w, y, y + 0.16, zf, zf + 0.05, PAL.g2);
+  };
+
+  // ── Landmarks ──
+  // Town Hall: slate-blue colonial hall with a white pediment, tall
+  // windows, two chimneys, a clock tower and a flagpole on its lawn.
+  const townHall = (cx, zf, y) => {
+    const w = 7.5, h = 2.75, x0 = cx - w / 2;
+    B.box('town_slate', x0, x0 + w, y, y + h, zf - 4, zf);
+    C(x0 - 0.04, x0 + 0.22, y, y + h, zf - 0.1, zf + 0.05, PAL.white);                     // corner boards
+    C(x0 + w - 0.22, x0 + w + 0.04, y, y + h, zf - 0.1, zf + 0.05, PAL.white);
+    C(x0 + 0.22, x0 + w - 0.22, y + 1.32, y + 1.42, zf, zf + 0.04, PAL.sl2);               // floor line
+    for (const dx of [-2.4, 0, 2.4]) {                                                     // tall upper windows
+      win(cx + dx - 0.3, cx + dx + 0.3, y + 1.65, y + 2.3, zf);
+      C(cx + dx - 0.15, cx + dx + 0.15, y + 2.3, y + 2.45, zf, zf + 0.08, PAL.sl2, lit);
+    }
+    win(cx - 2.75, cx - 2.05, y + 0.45, y + 1.1, zf);
+    win(cx + 2.05, cx + 2.75, y + 0.45, y + 1.1, zf);
+    C(cx - 0.4, cx + 0.4, y, y + 1.1, zf, zf + 0.06, PAL.wo4);                              // door with a round top
+    C(cx - 0.2, cx + 0.2, y + 1.1, y + 1.25, zf, zf + 0.06, PAL.wo4);
+    C(cx + 0.2, cx + 0.3, y + 0.5, y + 0.6, zf + 0.06, zf + 0.09, PAL.ye2);
+    C(x0 - 0.3, x0 + w + 0.3, y, y + 0.14, zf, zf + 0.6, PAL.g2);                           // steps
+    C(cx - 0.9, cx + 0.9, y + 0.14, y + 0.26, zf, zf + 0.4, PAL.g1);
+    // Cornice and stepped pediment, white with a slate-blue middle
+    C(x0 - 0.25, x0 + w + 0.25, y + h, y + h + 0.2, zf - 4.1, zf + 0.25, PAL.white);
+    for (let i = 0; i < 3; i++) {
+      const hw = w / 2 - i * 1.2, y0 = y + h + 0.2 + i * 0.3;
+      C(cx - hw, cx + hw, y0, y0 + 0.3, zf - 4, zf + 0.2, PAL.white);
+      if (i < 2) B.front('town_slate', cx - hw + 0.6, cx + hw - 0.6, y0, y0 + 0.3, zf + 0.21);
+    }
+    C(cx - 0.2, cx + 0.2, y + h + 0.3, y + h + 0.7, zf + 0.21, zf + 0.25, PAL.sl3);         // round gable window
+    chimney(x0 + 0.8, zf - 2.5, y + h + 0.2, y + h + 1.5);
+    chimney(x0 + w - 0.8, zf - 2.5, y + h + 0.2, y + h + 1.5);
+    // Clock tower on the ridge
+    const ty = y + h + 0.8, tz = zf - 1.1;
+    B.box('town_slate', cx - 0.85, cx + 0.85, ty, ty + 1.6, tz - 0.85, tz + 0.85);
+    C(cx - 0.9, cx - 0.7, ty, ty + 1.6, tz + 0.7, tz + 0.9, PAL.white);
+    C(cx + 0.7, cx + 0.9, ty, ty + 1.6, tz + 0.7, tz + 0.9, PAL.white);
+    const tiers = [1.1, 0.8, 0.5, 0.22];
+    for (let i = 0; i < tiers.length; i++) {
+      B.box('town_slate_roof', cx - tiers[i], cx + tiers[i], ty + 1.6 + i * 0.25, ty + 1.85 + i * 0.25, tz - tiers[i], tz + tiers[i]);
+    }
+    C(cx - 0.06, cx + 0.06, ty + 2.6, ty + 2.95, tz - 0.06, tz + 0.06, PAL.ye3);
+    // The clock: a pale face that glows after dark, and one hand
+    const face = G3.box(1.1, 1.1, 0.06, T.clockMat = new THREE.MeshLambertMaterial({ color: PAL.white, emissive: PAL.ye1, emissiveIntensity: 0 }), cx, ty + 0.8, tz + 0.88);
+    face.castShadow = false;
+    T.group.add(face);
+    for (const [dx, dy] of [[0, 0.45], [0.45, 0], [0, -0.45], [-0.45, 0]]) {
+      C(cx + dx - 0.05, cx + dx + 0.05, ty + 0.8 + dy - 0.05, ty + 0.8 + dy + 0.05, tz + 0.91, tz + 0.93, PAL.sl3);
+    }
+    T.clockHand = new THREE.Group();
+    T.clockHand.position.set(cx, ty + 0.8, tz + 0.94);
+    const hand = G3.box(0.14, 0.46, 0.04, G3.mat(PAL.ink), 0, 0.19, 0);
+    const hub = G3.box(0.2, 0.2, 0.05, G3.mat(PAL.ink), 0, 0, 0);
+    hand.castShadow = hub.castShadow = false;
+    T.clockHand.add(hand, hub);
+    T.group.add(T.clockHand);
+    // Flagpole on the lawn to the left
+    const px = x0 - 1.2, pz = zf + 0.9;
+    C(px - 0.06, px + 0.06, y, y + 5.2, pz - 0.06, pz + 0.06, PAL.g3);
+    C(px - 0.1, px + 0.1, y + 5.2, y + 5.4, pz - 0.1, pz + 0.1, PAL.ye3);
+    const ftex = G3.pixelTex('town_flag', 11, 7, g => TOWN_ART.paintFlag(g));
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.9), G3.texMat(ftex, { side: THREE.DoubleSide }));
+    flag.position.set(0.7, 0, 0);
+    T.flag = new THREE.Group();
+    T.flag.position.set(px + 0.06, y + 4.7, pz);
+    T.flag.add(flag);
+    T.group.add(T.flag);
+  };
+
+  // The white church: columns, pediment, bell tower, stepped steeple, gold cross
+  const church = (cx, zf, y) => {
+    const w = 4.5, h = 2.75, x0 = cx - w / 2;
+    B.box('white', x0, x0 + w, y, y + h, zf - 4.5, zf - 0.4);                               // the wall behind the columns
+    for (const dx of [0, 1.35, 2.7, 4.05]) C(x0 + dx, x0 + dx + 0.45, y + 0.14, y + h - 0.35, zf - 0.4, zf, PAL.white);
+    win(x0 + 0.7, x0 + 1.1, y + 0.8, y + 1.7, zf - 0.4, 'home', null);                      // tall windows
+    C(x0 + 0.8, x0 + 1.0, y + 1.7, y + 1.85, zf - 0.4, zf - 0.32, PAL.sl2, lit);
+    win(x0 + 3.4, x0 + 3.8, y + 0.8, y + 1.7, zf - 0.4, 'home', null);
+    C(x0 + 3.5, x0 + 3.7, y + 1.7, y + 1.85, zf - 0.4, zf - 0.32, PAL.sl2, lit);
+    C(cx - 0.4, cx + 0.4, y + 0.14, y + 1.3, zf - 0.4, zf - 0.33, PAL.wo3);                 // door
+    C(cx - 0.2, cx + 0.2, y + 1.3, y + 1.45, zf - 0.4, zf - 0.33, PAL.wo3);
+    C(x0 - 0.3, x0 + w + 0.3, y, y + 0.14, zf - 0.5, zf + 0.5, PAL.g2);                     // steps
+    // Entablature and stepped pediment
+    C(x0 - 0.2, x0 + w + 0.2, y + h - 0.35, y + h, zf - 4.6, zf + 0.15, PAL.white);
+    C(x0 - 0.2, x0 + w + 0.2, y + h - 0.42, y + h - 0.35, zf, zf + 0.15, PAL.g2);
+    for (let i = 0; i < 3; i++) {
+      const hw = w / 2 + 0.2 - i * 0.8;
+      C(cx - hw, cx + hw, y + h + i * 0.3, y + h + (i + 1) * 0.3, zf - 4.6, zf + 0.15, i ? PAL.white : PAL.g1);
+    }
+    C(cx - 0.15, cx + 0.15, y + h + 0.3, y + h + 0.6, zf + 0.15, zf + 0.18, PAL.sl2);
+    // Tower, belfry and steeple
+    const tz = zf - 1.5;
+    let ty = y + h + 0.3;
+    B.box('white', cx - 0.9, cx + 0.9, ty, ty + 1.7, tz - 0.9, tz + 0.9);
+    C(cx - 0.15, cx + 0.15, ty + 0.9, ty + 1.3, tz + 0.9, tz + 0.94, PAL.sl2);
+    ty += 1.7;
+    C(cx - 1.05, cx + 1.05, ty, ty + 0.14, tz - 1.05, tz + 1.05, PAL.g1);
+    B.box('white', cx - 0.65, cx + 0.65, ty + 0.14, ty + 1.2, tz - 0.65, tz + 0.65);
+    C(cx - 0.3, cx + 0.3, ty + 0.3, ty + 0.95, tz + 0.65, tz + 0.69, PAL.g4);               // louvres over the bell
+    C(cx - 0.15, cx + 0.15, ty + 0.95, ty + 1.08, tz + 0.65, tz + 0.69, PAL.g4);
+    ty += 1.2;
+    C(cx - 0.8, cx + 0.8, ty, ty + 0.12, tz - 0.8, tz + 0.8, PAL.g1);
+    const spire = [0.55, 0.42, 0.3, 0.18];
+    for (let i = 0; i < spire.length; i++) {
+      C(cx - spire[i], cx + spire[i], ty + 0.12 + i * 0.45, ty + 0.57 + i * 0.45, tz - spire[i], tz + spire[i], i % 2 ? PAL.white : PAL.g1);
+    }
+    ty += 0.12 + spire.length * 0.45;
+    C(cx - 0.05, cx + 0.05, ty, ty + 0.65, tz - 0.05, tz + 0.05, PAL.ye3);                  // cross
+    C(cx - 0.22, cx + 0.22, ty + 0.36, ty + 0.46, tz - 0.05, tz + 0.05, PAL.ye3);
+  };
 
   // ════════════════════════════════════════════════════
-  //  FRONT LAYER: buildings, and whatever hides the trail's travellers
+  //  The land
   // ════════════════════════════════════════════════════
-  PX.withTarget(T.front.getContext('2d'), () => {
-    _townBridge(1, trailY, 8, true);
-    _townTunnel(T.tunnelX, trailY, true);
-    _townTrailSign(T.tunnelX, trailY - 11);
+  _townTerrain(B);
 
-    const lamp = (x, y) => {
-      PX.spr('townLamp', x, y);
-      T.lamps.push({ x, y: y - 6 });
-    };
+  // Roads: the front street on the flat, Main Street on its terrace, and
+  // a side street that climbs the bank between them, right of the school.
+  road(TOWN.FRONT_Y, TOWN.FRONT_Z0, TOWN.FRONT_Z1);
+  road(Y1, TOWN.MAIN_Z0, TOWN.MAIN_Z1);
+  B.box('asphalt', 26.5, 28.5, 0, 0.06, -17, TOWN.FRONT_Z0);
+  B.box('asphalt', 26.5, 28.5, 1, 1.06, -18, -17);
+  B.box('asphalt', 26.5, 28.5, 2, 2.06, TOWN.MAIN_Z1, -18);
+  crosswalk(-20.6, TOWN.FRONT_Y, TOWN.FRONT_Z0, TOWN.FRONT_Z1);
+  crosswalk(24.8, TOWN.FRONT_Y, TOWN.FRONT_Z0, TOWN.FRONT_Z1);
+  crosswalk(-36.6, Y1, TOWN.MAIN_Z0, TOWN.MAIN_Z1);
+  crosswalk(28.8, Y1, TOWN.MAIN_Z0, TOWN.MAIN_Z1);
 
-    // ── Main Street, behind the school: houses and trees ──
-    // (mostly hidden, but they peep out wherever the school is low)
-    let n = 0;
-    for (let x = seenL + 14; x < seenR - 16; x += 21 + Math.floor(rnd() * 8), n++) {
-      const st = TOWN_HOUSES[n % TOWN_HOUSES.length];
-      if (n % 4 === 3) PX.spr(n % 8 === 3 ? 'townPine' : 'townTree', x, backY);
-      else if (n % 2) _townCottage(T, x, backY, st);
-      else _townHouse(T, x, backY, st);
-      if (n % 3 === 1) lamp(x + 11, backY + 1);
+  // The rail trail: stone dust along the upper terrace, turning into the
+  // tunnel at its right-hand end.
+  const tz0 = TOWN.TRAIL_Z0, tz1 = TOWN.TRAIL_Z1, tx = TOWN.TUNNEL_X;
+  B.box('town_trail', -72, -51, Y2, Y2 + 0.05, tz0, tz1);
+  B.box('town_trail', -40, tx + 0.75, Y2, Y2 + 0.05, tz0, tz1);
+  B.box('town_trail', tx - 0.75, tx + 0.75, Y2, Y2 + 0.05, -37, tz0);
+
+  // The stone bridge that carries the trail over the brook: four openings
+  // with stepped corners, and a low wall either side of the deck.
+  {
+    const xa = -51.375, pier = 0.75, gap = 2, n = 4, xb = xa + n * gap + (n + 1) * pier;
+    B.box({ top: 'town_trail', side: 'cobble' }, xa, xb, Y2 - 0.5, Y2 + 0.05, tz0 - 0.25, tz1 + 0.25);
+    B.box('stone', xa, xb, Y2 + 0.05, Y2 + 0.45, tz1, tz1 + 0.25);
+    B.box('stone', xa, xb, Y2 + 0.05, Y2 + 0.45, tz0 - 0.25, tz0);
+    for (let i = 0; i <= n; i++) {
+      const px = xa + i * (gap + pier);
+      B.box('cobble', px, px + pier, 1, Y2 - 0.5, tz0 - 0.15, tz1 + 0.15);
+      if (i < n) {
+        B.box('cobble', px + pier, px + pier + 0.4, Y2 - 0.9, Y2 - 0.5, tz0 - 0.15, tz1 + 0.15);
+        B.box('cobble', px + pier + gap - 0.4, px + pier + gap, Y2 - 0.9, Y2 - 0.5, tz0 - 0.15, tz1 + 0.15);
+        C(px + pier, px + pier + gap, 1.1, Y2 - 0.5, tz0, tz0 + 0.1, PAL.fo5);           // the shade under the arch
+      }
     }
+    bush(xa - 0.8, tz1 + 0.6, Y2);
+    bush(xb + 0.8, tz1 + 0.6, Y2);
+  }
 
-    // ── Main Street, left: the Superette ──
-    _townSuperette(T, 1, backY);
-    PX.spr('townTree', seenL - 4, backY);
+  // The tunnel mouth in the hillock, and the green RAIL TRAIL sign over it
+  {
+    const zf = -37;
+    B.box('cobble', tx - 1.3, tx - 0.75, Y2, Y2 + 2, zf, zf + 0.25);
+    B.box('cobble', tx + 0.75, tx + 1.3, Y2, Y2 + 2, zf, zf + 0.25);
+    B.box('cobble', tx - 1.3, tx + 1.3, Y2 + 2, Y2 + 2.5, zf, zf + 0.25);
+    B.box('cobble', tx - 0.75, tx - 0.45, Y2 + 1.7, Y2 + 2, zf, zf + 0.25);
+    B.box('cobble', tx + 0.45, tx + 0.75, Y2 + 1.7, Y2 + 2, zf, zf + 0.25);
+    C(tx - 0.15, tx + 0.15, Y2 + 2.1, Y2 + 2.5, zf + 0.25, zf + 0.29, PAL.g1);           // keystone
+    C(tx - 0.75, tx + 0.75, Y2, Y2 + 2, zf + 0.02, zf + 0.05, PAL.black);                // the dark inside
+    B.box('leaves_light', tx - 1.4, tx - 0.5, Y2 + 2.5, Y2 + 2.75, zf - 0.2, zf + 0.35); // vines
+    B.box('leaves_light', tx + 0.7, tx + 1.5, Y2 + 2.5, Y2 + 2.75, zf - 0.2, zf + 0.35);
+    B.box('leaves_light', tx - 1.4, tx - 1.15, Y2 + 2.0, Y2 + 2.5, zf + 0.25, zf + 0.35);
+    const sp = TOWN_ART.SIGNS.trail, bw = 6.6, bh = bw * sp.h / sp.w, sy = Y2 + 2.75;
+    C(tx - bw / 2 + 0.4, tx - bw / 2 + 0.6, Y2, sy + bh, zf + 0.5, zf + 0.7, PAL.wo3);   // posts
+    C(tx + bw / 2 - 0.6, tx + bw / 2 - 0.4, Y2, sy + bh, zf + 0.5, zf + 0.7, PAL.wo3);
+    C(tx - bw / 2, tx + bw / 2, sy, sy + bh, zf + 0.7, zf + 0.8, PAL.gr5);
+    sign('trail', tx - bw / 2, sy, zf + 0.81, bw);
+  }
 
-    // ── Main Street, right: Town Hall, church, two houses ──
-    PX.spr('townTree', seenR + 2, backY);
-    _townHall(T, W - 98, backY);
-    PX.spr('townPine', W - 77, backY);
-    _townChurch(T, W - 59, backY);
-    PX.spr('townTree', W - 44, backY);
-    _townHouse(T, W - 33, backY, TOWN_HOUSES[2]);
-    _townCottage(T, W - 14, backY, TOWN_HOUSES[1]);
-    PX.spr('townBush', W - 23, backY);
-    lamp(W - 120, backY + 1);
-    lamp(W - 72, backY + 1);
-    lamp(W - 46, backY + 1);
-    lamp(52, backY + 1);
+  // Lake Winthrop's beach and reeds
+  B.box('sand', -53, -49, Y2, Y2 + 0.04, -40, -39.3);
+  for (const [rx, rz, rh] of [[-43.6, -42.5, 0.7], [-43.3, -43.2, 0.5], [-43.9, -43.6, 0.6], [-44.4, -44.6, 0.5]]) {
+    C(rx, rx + 0.12, TOWN_LAKE.y, TOWN_LAKE.y + rh, rz, rz + 0.12, PAL.gr4);
+  }
 
-    // ── Front street, behind the school ──
-    n = 0;
-    for (let x = seenL + 6; x < seenR - 10; x += 20 + Math.floor(rnd() * 9), n++) {
-      const st = TOWN_HOUSES[(n + 3) % TOWN_HOUSES.length];
-      if (n % 3 === 2) PX.spr(n % 2 ? 'townPine' : 'townTree', x, frontY);
-      else if (n % 2) _townHouse(T, x, frontY, st);
-      else _townCottage(T, x, frontY, st);
-    }
-
-    // ── Front street, left: Fiske's and CVS ──
-    _townFiskes(T, 0, frontY);
-    _townCVS(T, 35, frontY);
-
-    // ── Front street, right: houses and garden trees ──
-    _townCottage(T, W - 107, frontY, TOWN_HOUSES[0]);
-    PX.spr('townPine', W - 94, frontY);
-    _townHouse(T, W - 83, frontY, TOWN_HOUSES[4]);
-    PX.spr('townTree', W - 73, frontY);
-    PX.spr('townBush', W - 57, frontY);
-    _townCottage(T, W - 46, frontY, TOWN_HOUSES[3]);
-    PX.spr('townPine', W - 33, frontY);
-    _townHouse(T, W - 22, frontY, TOWN_HOUSES[6]);
-    PX.spr('townTree', W - 9, frontY);
-    lamp(W - 62, frontY + 1);
-    lamp(W - 28, frontY + 1);
-    lamp(33, frontY + 1);
-  });
+  // Fields on the upper terrace: hay, and a green crop, in rows
+  const field = (x0, x1, z0, z1, a, b) => {
+    let i = 0;
+    for (let z = z0; z < z1 - 0.01; z += 0.75, i++) C(x0 + (i === 0 ? 0.5 : 0), x1 - (i === 0 ? 0.5 : 0), Y2 + 0.02, Y2 + 0.1, z, z + 0.75, i % 2 ? a : b);
+  };
+  field(3, 12, -46.5, -42, PAL.ye1, PAL.ta2);
+  field(-21, -13, -46.25, -42.5, PAL.gr2, PAL.gr3);
 
   // ════════════════════════════════════════════════════
-  //  NIGHT LIGHTS: lit windows and lamps, faded in after dark
+  //  The buildings
   // ════════════════════════════════════════════════════
-  const lg = T.lights.getContext('2d');
-  PX.withTarget(lg, () => {
-    const lit = _townRand(7);
-    for (const w of T.windows) {
-      if (w.kind !== 'shop' && lit() < 0.25) continue;      // somebody is out, or asleep
-      PX.rect(w.x, w.y, w.w, w.h, w.kind === 'shop' ? PAL.ye1 : PAL.ye2);
-      if (w.kind === 'shop' && w.h > 2) PX.rect(w.x, w.y + w.h - 1, w.w, 1, PAL.ye2);
-      if (w.arch) PX.px(w.x + 1, w.y - 1, PAL.ye2);
-    }
-    if (T.clock) PX.circle(T.clock.x, T.clock.y, 2, PAL.ye1);
-    for (const l of T.lamps) {
-      // a soft pool of light around each lamp
-      lg.globalAlpha = 0.22;
-      PX.rect(l.x - 2, l.y - 1, 5, 3, PAL.ye2);
-      PX.rect(l.x - 1, l.y - 2, 3, 5, PAL.ye2);
-      lg.globalAlpha = 1;
-      PX.px(l.x, l.y, PAL.ye1);
-    }
-  });
+  // Front row, left: Fiske's and CVS
+  fiskes(-34, -12.5, 0);
+  cvs(-25, -12.5, 0);
+  tree(-20.2, -14.5, 1, true, 0);
+  lamp(-34.6, -11.5, 0);
+  lamp(-19.6, -11.5, 0);
 
-  // Only smoke from chimneys that can be seen is worth animating
-  T.chimneys = T.chimneys.filter(ch => _townSeen(ch.x - 6, ch.x + 6));
+  // Front row, right: the church and a cottage either side of the side street
+  church(22.75, -12.5, 0);
+  cottage(32, -12.5, 0, 0);
+  pine(35.8, -13.5, 1.2, 0);
+  tree(37.5, -15, 1, false, 0);
+  bush(29, -12.2, 0);
+  lamp(25.9, -11.5, 0);
+  lamp(34.6, -11.5, 0);
+
+  // Main Street, left: the Superette
+  superette(-34.5, -26, Y1);
+  tree(-37, -28, 1, false, Y1);
+  pine(-36.2, -26.8, 1, Y1);
+  bush(-39, -27, Y1);
+  lamp(-36, -25.5, Y1);
+  lamp(-23, -25.5, Y1);
+
+  // Main Street, behind the school: houses whose roofs peep over it
+  cottage(-17, -26, Y1, 0);
+  tree(-12.5, -28, 1, true, Y1);
+  house(-8, -26, Y1, 4);
+  pine(-4, -27.5, 1.2, Y1);
+  cottage(2.5, -26, Y1, 3);
+  tree(7.5, -28, 1, false, Y1);
+  house(12, -26, Y1, 6);
+  pine(16, -27.5, 1.2, Y1);
+  house(20, -26, Y1, 1);
+  tree(24, -28.5, 1, true, Y1);
+
+  // Main Street, right: Town Hall (nothing tall beyond it, so that the
+  // tunnel mouth shows)
+  townHall(34.25, -26, Y1);
+  tree(27.5, -29, 1, false, Y1);
+  bush(40.5, -27, Y1);
+  bush(43.5, -28.5, Y1);
+  lamp(29.6, -25.5, Y1);
+  lamp(39.4, -25.5, Y1);
+
+  // The upper terrace: far houses among the trees
+  const far = [[-36, 6], [-27, 1], [-12, 2], [1, 5], [14, 0], [25, 4], [38, 3]];
+  for (const [fx, n] of far) farHouse(fx, -39, Y2, n);
+
+  // ════════════════════════════════════════════════════
+  //  The woods
+  // ════════════════════════════════════════════════════
+  // Trees scattered over the upper terrace and the ridge: smaller and
+  // closer together the further back they stand.
+  const o = {};
+  for (let i = 0; i < 200; i++) {
+    const x = Math.round((rnd() * 140 - 70) * 2) / 2, z = Math.round((-37.5 - rnd() * 9.5) * 2) / 2;
+    const kind = rnd(), s0 = rnd();
+    _townGround(Math.floor(x) + 0.5, Math.floor(z) + 0.5, o);
+    if (o.water) continue;
+    if (x > -60 && x < -41 && z > -47) continue;                          // keep the lake shore open
+    if (x > -52 && x < -39 && z > -39) continue;                          // and the valley
+    if (Math.abs(x - TOWN.TUNNEL_X) < 5.5 && z > -43.5) continue;               // the tunnel hillock
+    if (x > 2 && x < 13 && z > -47.5 && z < -41) continue;                  // the fields
+    if (x > -22 && x < -12 && z > -47.5 && z < -41.5) continue;
+    if (z > -42.5 && far.some(f => Math.abs(f[0] - x) < 2.6)) continue;     // the far houses
+    // the ground must be level under the tree
+    if (ground(x - 0.6, z) !== o.h || ground(x + 0.6, z) !== o.h || ground(x, z + 0.6) !== o.h) continue;
+    const back = z < -43, s = (back ? 0.7 : 0.8) + s0 * 0.2;
+    if (kind < 0.42) pine(x, z, s * 1.15, o.h);
+    else tree(x, z, s, kind > 0.72, o.h);
+  }
+  // A few on top of the tunnel's hillock
+  pine(tx - 0.8, -39.5, 0.9, 6);
+  tree(tx + 2.6, -40.5, 0.8, true, 5);
+  bush(tx - 2.4, -38.4, 5);
+
+  // ════════════════════════════════════════════════════
+  //  Baking: one mesh per texture, and a few special ones
+  // ════════════════════════════════════════════════════
+  B.bake(T.group);
+  const special = (boxes, mat) => {
+    const m = TOWN_ART.merged(boxes);
+    if (mat) m.material = mat;
+    m.castShadow = false;
+    T.group.add(m);
+    return m;
+  };
+  special(col);
+  // Windows and lamps glow after dark; drawTown() turns them up and down
+  T.litMat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: PAL.ye2, emissiveIntensity: 0 });
+  T.shopMat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: PAL.ye1, emissiveIntensity: 0 });
+  T.lampMat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: PAL.ye1, emissiveIntensity: 0 });
+  T.poolMat = new THREE.MeshBasicMaterial({ color: PAL.ye2, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+  special(lit, T.litMat);
+  special(shop, T.shopMat);
+  special(lampHeads, T.lampMat);
+  T.pools = special(pools, T.poolMat);
+  T.pools.receiveShadow = false;
+  T.pools.visible = false;
+
+  // Chimney smoke: three puffs per chimney, all in one instanced mesh
+  T.smokeMat = new THREE.MeshLambertMaterial({ color: PAL.g1, transparent: true, opacity: 0.75 });
+  T.smoke = new THREE.InstancedMesh(G3.geo(0.3, 0.3, 0.3), T.smokeMat, T.chimneys.length * 3);
+  T.smoke.castShadow = false; T.smoke.receiveShadow = false;
+  T.smoke.frustumCulled = false;
+  T.group.add(T.smoke);
+
+  // Sparkles that hop about on the lake
+  T.sparkMat = G3.mat(PAL.white, { basic: true });
+  for (let i = 0; i < 4; i++) {
+    const m = G3.box(0.9, 0.03, 0.18, T.sparkMat, 0, TOWN_LAKE.y + 0.03, 0);
+    m.castShadow = false; m.receiveShadow = false;
+    T.group.add(m);
+    T.sparkles.push(m);
+  }
+
+  // Headlights: one lamp bar and one beam shape shared by every car
+  T.headMat = G3.mat(PAL.ye1, { basic: true });
+  T.beamMat = new THREE.MeshBasicMaterial({ color: PAL.ye1, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending });
+
+  // Nothing in the still town ever moves again
+  T.group.traverse(m => { if (m !== T.clockHand && m !== T.flag && m.parent !== T.clockHand && !T.balloons.includes(m) && !T.sparkles.includes(m)) { m.updateMatrix(); m.matrixAutoUpdate = false; } });
+  T.group.matrixAutoUpdate = true;
+  G3.scene.add(T.group);
+  T.movers = new THREE.Group();
+  G3.scene.add(T.movers);
+  _townBuildMovers(T);
   return T;
+}
+
+// Gives every car, bus, walker and cyclist its little box model.
+function _townBuildMovers(T) {
+  const noShadow = (m) => { m.castShadow = false; return m; };
+  for (const car of _bgCars.concat(_bgCars2)) {
+    const g = new THREE.Group(), len = car.bus ? 4.2 : 2.4;
+    g.add(noShadow(car.bus ? TOWN_ART.bus(car.pal) : TOWN_ART.car(car.pal)));
+    // At night: bright lamps, and a short beam on the road ahead
+    const lamps = noShadow(G3.box(0.08, 0.2, car.bus ? 1.0 : 0.86, T.headMat, len / 2 + 0.03, 0.53, 0));
+    const beam = noShadow(G3.box(2.2, 0.02, 1.1, T.beamMat, len / 2 + 1.2, 0.03, 0));
+    lamps.receiveShadow = beam.receiveShadow = false;
+    g.add(lamps, beam);
+    car.m = g; car.lamps = lamps; car.beam = beam;
+    T.movers.add(g);
+  }
+  for (const w of _bgWalkers.concat(_bgWalkers2, _bgTrailWalkers)) {
+    const g = new THREE.Group();
+    w.stand = noShadow(TOWN_ART.walker(w.pal, false));
+    w.stride = noShadow(TOWN_ART.walker(w.pal, true));
+    g.add(w.stand, w.stride);
+    w.m = g;
+    T.movers.add(g);
+  }
+  for (const b of _bgBikers) {
+    const g = new THREE.Group();
+    b.f0 = noShadow(TOWN_ART.biker(b.pal, 0));
+    b.f1 = noShadow(TOWN_ART.biker(b.pal, 1));
+    g.add(b.f0, b.f1);
+    b.m = g;
+    T.movers.add(g);
+  }
 }
 
 // ══════════════════════════════════════════════════════
 //  drawTown()  — the single entry point
 // ══════════════════════════════════════════════════════
 
-// Draws the town backdrop: the two painted layers with the traffic,
-// walkers, cyclists, smoke and other small moving things between them.
+// Builds the town the first time, then only moves the traffic, walkers,
+// cyclists, smoke and other small things and sets the night lights.
 function drawTown() {
   try {
     if (!_bgCars) _initBgElements();
+    if (!_town) _town = _buildTown();
+    const T = _town;
 
-    // Repaint the still parts only when the art grid or the font changes
-    const key = PX.W + '|' + PX.H + '|' + PX.S + '|' + PX.HOR;
-    if (!_town || _town.key !== key || _town.font !== PX.fonts.small) _town = _buildTown(key);
-    const T = _town, H0 = PX.HOR, Y = TOWN_ROWS;
+    // The signs are painted with the pixel font: repaint them once it has loaded
+    if (T.font !== PX.fonts.bold) {
+      T.font = PX.fonts.bold;
+      for (const s of T.signs) {
+        TOWN_ART.paintSign(s.tex.image.getContext('2d'), s.sp);
+        s.tex.needsUpdate = true;
+      }
+    }
 
-    PX.c.drawImage(T.back, 0, 0);
-    _drawTownLake(T);
-    // When the weather clears, the rainbow comes down in front of the far hills
-    if (typeof queueRainbowFoot === 'function') queueRainbowFoot(T.back, _townSchoolEdges().l);
+    // Rail trail: walkers on the far side, bikes on the near side
+    _updateDrawBgWalkers(_bgTrailWalkers, TOWN.TRAIL_Y + 0.05, TOWN.TRAIL_Z0 + 0.4, TOWN.TRAIL_SPAN, TOWN.TUNNEL_X);
+    _updateDrawBgBikers(_bgBikers, TOWN.TRAIL_Y + 0.05, TOWN.TRAIL_Z1 - 0.45, TOWN.TRAIL_SPAN, TOWN.TUNNEL_X);
 
-    // Rail trail: walkers behind, bikes in front, then the bridge railing
-    // and the tunnel mouth over both
-    _updateDrawBgWalkers(_bgTrailWalkers, H0 + Y.trail + 1, T.tunnelX + 3);
-    _updateDrawBgBikers(_bgBikers, H0 + Y.trail + 2, T.tunnelX + 3);
+    // Main Street: traffic, and people on the near sidewalk
+    _updateDrawBgCars(_bgCars2, TOWN.MAIN_Y + 0.06, TOWN.MAIN_Z0 + 0.62, TOWN.MAIN_Z1 - 0.62, TOWN.MAIN_SPAN);
+    _updateDrawBgWalkers(_bgWalkers2, TOWN.MAIN_Y + 0.12, TOWN.MAIN_Z1 + 0.4, TOWN.MAIN_SPAN);
 
-    PX.c.drawImage(T.front, 0, 0);
-
-    // Main Street: the far lane first, then the near lane, then the sidewalk
-    _updateDrawBgCars(_bgCars2, H0 + Y.road + 3, H0 + Y.road + 5);
-    _updateDrawBgWalkers(_bgWalkers2, H0 + Y.road + 6);
-
-    // Front street
-    _updateDrawBgWalkers(_bgWalkers, H0 + Y.road2);
-    _updateDrawBgCars(_bgCars, H0 + Y.road2 + 3, H0 + Y.road2 + 5);
+    // Front street: people on the far sidewalk, in front of the shops
+    _updateDrawBgWalkers(_bgWalkers, TOWN.FRONT_Y + 0.12, TOWN.FRONT_Z0 - 0.4, TOWN.FRONT_SPAN);
+    _updateDrawBgCars(_bgCars, TOWN.FRONT_Y + 0.06, TOWN.FRONT_Z0 + 0.62, TOWN.FRONT_Z1 - 0.62, TOWN.FRONT_SPAN);
 
     _drawTownExtras(T);
     _drawTownLights(T);
@@ -833,169 +899,133 @@ function drawTown() {
     console.error('Town drawing error:', e);
   }
 }
-drawTown.pixel = true;
+drawTown.g3 = true;
 
 // ── Small moving details ─────────────────────────────
 
-// Sparkles drifting across Lake Winthrop
-function _drawTownLake(T) {
-  const lk = T.lake;
-  if (!lk) return;
-  const span = lk.x1 - lk.x0;
-  for (let i = 0; i < 5; i++) {
-    // each sparkle shows for a while, then jumps to a new spot
-    const step = Math.floor((PX.tick + i * 23) / 46);
-    if ((step + i) % 3 === 0) continue;
-    const x = lk.x0 + ((step * 17 + i * 29) % span);
-    const y = lk.y - 1 + ((step + i) % 3);
-    if (x < 0) continue;
-    PX.rect(x, y, 2 + (i % 2), 1, PAL.wa1);
-    if (PX.anim(2, 23, i * 11)) PX.px(x + 1, y, PAL.white);
-  }
-}
-
-// Chimney smoke, Fiske's balloons, the Town Hall flag and its clock
+// Chimney smoke, lake sparkles, Fiske's balloons, the Town Hall flag and clock
+const _townM4 = (typeof THREE !== 'undefined') ? new THREE.Matrix4() : null;
 function _drawTownExtras(T) {
-  // Smoke: three puffs per chimney climbing, wobbling and leaning with the wind
+  const tick = G3.frame;
+  // Smoke: three puffs per chimney climbing, growing and leaning with the wind
   for (let n = 0; n < T.chimneys.length; n++) {
     const ch = T.chimneys[n];
     for (let i = 0; i < 3; i++) {
-      const p = ((PX.tick + n * 37) / 120 + i / 3) % 1;
-      const x = ch.x + Math.round(Math.sin(p * 5 + n) * 0.7 + windX * p * 4);
-      const y = ch.y - Math.floor(p * 8);
-      if (p < 0.35) PX.px(x, y, PAL.g1);
-      else if (p < 0.7) { PX.rect(x, y, 2, 1, PAL.g1); PX.px(x, y - 1, PAL.g1); }
-      else PX.alpha(0.5, () => PX.rect(x, y - 1, 2, 2, PAL.g1));
+      const p = ((tick + n * 37) / 150 + i / 3) % 1;
+      const s = (0.6 + p * 1.1) * (p > 0.85 ? (1 - p) / 0.15 : 1);
+      _townM4.makeScale(s, s, s).setPosition(
+        ch.x + Math.sin(p * 5 + n) * 0.15 + windX * p * 1.2, ch.y + 0.15 + p * 2.2, ch.z);
+      T.smoke.setMatrixAt(n * 3 + i, _townM4);
     }
+  }
+  T.smoke.instanceMatrix.needsUpdate = true;
+
+  // Sparkles drifting across Lake Winthrop: each shows for a while, then
+  // jumps to a new spot
+  for (let i = 0; i < T.sparkles.length; i++) {
+    const step = Math.floor((tick + i * 23) / 46), m = T.sparkles[i];
+    m.visible = (step + i) % 3 !== 0;
+    if (!m.visible) continue;
+    m.position.x = -56 + ((step * 17 + i * 29) % 11);
+    m.position.z = -44.5 + ((step + i * 2) % 4);
+    m.scale.x = Math.floor(tick / 23 + i) % 2 ? 1 : 0.6;
   }
 
   // Balloons bobbing on their strings outside Fiske's
-  if (T.balloons) {
-    const b = T.balloons;
-    const cols = [[PAL.re2, PAL.re1], [PAL.ye2, PAL.ye1], [PAL.bl2, PAL.bl1]];
-    for (let i = 0; i < 3; i++) {
-      const bx = b.x + i - 1 + (i === 2 ? 1 : 0);
-      const by = b.y - 9 - (i === 1 ? 3 : 0) + (PX.anim(2, 34, i * 19) ? 1 : 0);
-      PX.line(b.x + 1, b.y, bx + 1, by + 2, PAL.g1);
-      PX.rect(bx, by, 2, 2, cols[i][0]);
-      PX.px(bx, by, cols[i][1]);
-    }
+  for (let i = 0; i < T.balloons.length; i++) {
+    const b = T.balloons[i];
+    b.position.y = b.userData.y + (Math.floor((tick + i * 19) / 34) % 2 ? 0.06 : 0);
   }
 
-  if (T.flag) PX.spr('townFlag', T.flag.x, T.flag.y, { frame: PX.anim(2, 26) });
+  // The flag flaps in two frames, like a flip-book
+  if (T.flag) {
+    const f = Math.floor(tick / 26) % 2;
+    T.flag.scale.x = f ? 0.86 : 1;
+    T.flag.rotation.y = (f ? 0.5 : 0.15) * (windX < 0 ? -1 : 1);
+  }
 
-  _drawTownClockHand(T);
+  // The Town Hall clock's single hand follows the garden's day (dawn is about 6 o'clock)
+  if (T.clockHand) T.clockHand.rotation.z = -((5 + timeOfDay * 23) % 12) / 12 * TWO_PI;
 }
 
-// The Town Hall clock's single hand follows the garden's day (dawn is about 6 o'clock)
-function _drawTownClockHand(T) {
-  if (!T.clock) return;
-  const a = ((5 + timeOfDay * 23) % 12) / 12 * TWO_PI;
-  const hx = Math.round(Math.sin(a)), hy = -Math.round(Math.cos(a));
-  PX.px(T.clock.x, T.clock.y, PAL.ink);
-  PX.px(T.clock.x + hx, T.clock.y + hy, PAL.ink);
-  if (!(hx && hy)) PX.px(T.clock.x + hx * 2, T.clock.y + hy * 2, PAL.ink);
-}
-
-// Night lights: windows, street lamps and headlights. They have to be
-// drawn after the night tint, which means on top of the whole garden, so
-// they are first gathered in a scratch layer and everything that stands in
-// front of the town (the school, the fence, the swaying trees) is cut out
-// of it. No window shines through a wall or a tree, and the ones right
-// beside the school are lit like all the others.
+// Night lights: windows, shop signs, street lamps and headlights all
+// brighten together as it gets dark. They are real parts of the block
+// world, so the school and the trees hide them as they should.
 function _drawTownLights(T) {
-  const na = nightAmount();
-  if (na <= 0.2) return;
-  const glow = constrain((na - 0.2) / 0.4, 0, 1);
-  const H0 = PX.HOR, Y = TOWN_ROWS;
-  PX.light(() => {
-    const g = T.glow.getContext('2d');
-    g.clearRect(0, 0, T.glow.width, T.glow.height);
-    PX.withTarget(g, () => {
-      PX.c.drawImage(T.lights, 0, 0);
-
-      // People walking past the lit shop windows, in their night colours
-      for (const w of _bgWalkers) {
-        const x = Math.round(w.x / PX.S);
-        PX.spr('townWalker', x, H0 + Y.road2, { frame: sin(w.phase) > 0 ? 'stand' : 'stride', flip: w.dir < 0, pal: w.nightPal });
-      }
-      _drawTownClockHand(T);
-
-      // Headlights: a bright lamp and a short beam on the road ahead
-      const beams = (cars, farY, nearY) => {
-        for (const car of cars) {
-          const x = Math.round(car.x / PX.S);
-          const front = x + car.dir * (car.bus ? 9 : 6);
-          const y = (car.dir > 0 ? nearY : farY) - 3;
-          PX.px(front - (car.dir > 0 ? 1 : 0), y, PAL.ye1);
-          PX.alpha(0.4, () => {
-            PX.rect(car.dir > 0 ? front : front - 3, y, 3, 1, PAL.ye1);
-            PX.rect(car.dir > 0 ? front + 1 : front - 6, y + 1, 5, 1, PAL.ye2);
-          });
-        }
-      };
-      beams(_bgCars2, H0 + Y.road + 3, H0 + Y.road + 5);
-      beams(_bgCars, H0 + Y.road2 + 3, H0 + Y.road2 + 5);
-
-      // Cut away whatever stands in front of the town
-      if (typeof drawTownOccluders === 'function') {
-        g.globalCompositeOperation = 'destination-out';
-        drawTownOccluders();
-        g.globalCompositeOperation = 'source-over';
-      }
-    });
-    PX.alpha(glow, () => PX.c.drawImage(T.glow, 0, 0));
-  });
+  const glow = Math.max(0, Math.min(1, (G3.night - 0.2) / 0.4));
+  if (glow === T.glow) return;
+  T.glow = glow;
+  T.litMat.emissiveIntensity = glow * 0.85;
+  T.shopMat.emissiveIntensity = glow * 0.95;
+  T.lampMat.emissiveIntensity = glow;
+  T.clockMat.emissiveIntensity = glow * 0.7;
+  T.poolMat.opacity = glow * 0.22;
+  T.pools.visible = glow > 0;
+  for (const s of T.signs) s.mat.emissiveIntensity = glow * (s.sp === TOWN_ART.SIGNS.trail ? 0.25 : 0.6);
+  T.beamMat.opacity = glow * 0.3;
+  for (const car of _bgCars) { car.lamps.visible = car.beam.visible = glow > 0; }
+  for (const car of _bgCars2) { car.lamps.visible = car.beam.visible = glow > 0; }
 }
 
 // ── Vehicle & pedestrian animation ───────────────────
 
-// Update positions and draw cars/buses on a road, wrapping at screen edges.
-// Traffic keeps right: cars heading left use the far lane (farY) and are
-// drawn first, cars heading right use the near lane (nearY).
-function _updateDrawBgCars(carArr, farY, nearY) {
+// Update positions and pose cars/buses on a road, wrapping at the ends.
+// Traffic keeps right: cars heading left use the far lane (zFar), cars
+// heading right use the near lane (zNear).
+function _updateDrawBgCars(carArr, y, zFar, zNear, span) {
   for (let car of carArr) {
     car.x += car.speed * car.dir;
     if (car.dir > 0 && car.x > width + 50) car.x = -50;
     if (car.dir < 0 && car.x < -50)        car.x = width + 50;
-  }
-  for (let pass = -1; pass <= 1; pass += 2) {
-    for (let car of carArr) {
-      if (car.dir !== pass) continue;
-      const x = Math.round(car.x / PX.S);
-      // The hubcaps turn as the car covers ground
-      const opts = { frame: Math.floor(car.x / (PX.S * 2)) & 1, flip: car.dir < 0 };
-      if (car.pal) opts.pal = car.pal;
-      PX.spr(car.bus ? 'townBus' : 'townCar', x, pass < 0 ? farY : nearY, opts);
-    }
+    // The square wheels make for a slightly bumpy ride
+    const bump = (Math.floor(car.x / 6) & 1) ? 0.03 : 0;
+    car.m.position.set((car.x / width - 0.5) * span, y + bump, car.dir > 0 ? zNear : zFar);
+    car.m.rotation.y = car.dir > 0 ? 0 : Math.PI;
   }
 }
 
-// Update positions and draw walking pedestrians with a two-frame stride.
-// hideAfter (optional) is an art x past which they are out of sight.
-function _updateDrawBgWalkers(walkerArr, walkY, hideAfter) {
+// Where something that has come `x` blocks along the rail trail is: on the
+// trail, or (past the bend) heading into the tunnel. Returns false once it
+// is out of sight inside the hill.
+function _townTrailPose(m, x, y, z, dir, tunnelX) {
+  if (tunnelX === undefined || x <= tunnelX) {
+    m.position.set(x, y, z);
+    m.rotation.y = dir > 0 ? 0 : Math.PI;
+    return true;
+  }
+  const into = x - tunnelX;
+  m.position.set(tunnelX + (z - (TOWN.TRAIL_Z0 + TOWN.TRAIL_Z1) / 2) * 0.6, y, TOWN.TRAIL_Z0 + 0.5 - into);
+  m.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+  return into < 3.2;
+}
+
+// Update positions and pose walking pedestrians with a two-frame stride.
+// tunnelX (optional) is where the trail turns into the tunnel.
+function _updateDrawBgWalkers(walkerArr, y, z, span, tunnelX) {
   for (let w of walkerArr) {
     w.x += w.speed * w.dir;
     w.phase += 0.12;
     if (w.dir > 0 && w.x > width + 20) w.x = -20;
     if (w.dir < 0 && w.x < -20)        w.x = width + 20;
 
-    const x = Math.round(w.x / PX.S);
-    if (hideAfter !== undefined && x > hideAfter) continue;
-    PX.spr('townWalker', x, walkY, { frame: sin(w.phase) > 0 ? 'stand' : 'stride', flip: w.dir < 0, pal: w.pal });
+    w.m.visible = _townTrailPose(w.m, (w.x / width - 0.5) * span, y, z, w.dir, tunnelX);
+    const stride = Math.sin(w.phase) <= 0;
+    w.stand.visible = !stride;
+    w.stride.visible = stride;
   }
 }
 
-// Update positions and draw cyclists pedalling along the rail trail
-function _updateDrawBgBikers(bikerArr, trailY, hideAfter) {
+// Update positions and pose cyclists pedalling along the rail trail
+function _updateDrawBgBikers(bikerArr, y, z, span, tunnelX) {
   for (let b of bikerArr) {
     b.x += b.speed * b.dir;
     b.phase += 0.16;
     if (b.dir > 0 && b.x > width + 30) b.x = -30;
     if (b.dir < 0 && b.x < -30)        b.x = width + 30;
 
-    const x = Math.round(b.x / PX.S);
-    if (hideAfter !== undefined && x > hideAfter) continue;
-    PX.spr('townBiker', x, trailY, { frame: sin(b.phase * 2) > 0 ? 0 : 1, flip: b.dir < 0, pal: b.pal });
+    b.m.visible = _townTrailPose(b.m, (b.x / width - 0.5) * span, y, z, b.dir, tunnelX);
+    const f = Math.sin(b.phase * 2) > 0;
+    b.f0.visible = f;
+    b.f1.visible = !f;
   }
 }

@@ -5,15 +5,14 @@
 // Last Modified: November 22, 2026
 // Description: Defines the Groundhog class for a critter that emerges from
 //   a hole, looks around nervously, occasionally speaks, then hides again.
-//   Drawn as pixel art from the 'groundhog' sprites in js/art/animals_art.js.
+//   Drawn as a 3D box animal and its hole (ANIMALS3.groundhog in
+//   js/art/animals_art.js).
 // ================================================================
-
-const GROUNDHOG_ROWS = 13;   // height of the groundhog sprite when fully up
 
 // Groundhog class manages the digging/rising/looking/hiding states, head bob,
 // random look direction, and speech bubble spawning for a burrowing critter.
 class Groundhog {
-  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+  static g3 = true;      // drawn as a 3D box model (see docs/GARDEN_3D.md)
 
   constructor() {
     this.wx     = random(0.1, 0.9);
@@ -58,10 +57,7 @@ class Groundhog {
           const phrases = ['!', '...', '*sniff*', 'oh.', '?'];
           PEOPLE.say(
             phrases[floor(random(phrases.length))],
-            () => {
-              const p = worldToPx(this.wx, this.wy);
-              return { x: p.x, y: p.y - GROUNDHOG_ROWS - 2 };
-            },
+            () => G3.artAt(this.wx, this.wy, ANIMALS3.HOG_TALL + 0.3),
             () => this.state === 'hiding' || this.state === 'closing' || this.done
           );
         }
@@ -82,22 +78,20 @@ class Groundhog {
     }
   }
 
-  // Draws the hole, then as many rows of the groundhog as have come up out
-  // of it, then the dirt lip of the hole in front of him.
+  // Poses the hole (it opens out of the grass and closes again) and the
+  // groundhog, who comes straight up out of it; the lawn hides the rest of him.
   draw() {
-    const { x, y } = worldToPx(this.wx, this.wy);
-    const holeAlpha = this.hole;
-    PX.spr('groundhog_hole', x, y + 3, { frame: 'back', alpha: holeAlpha });
+    const m = G3.model(this, ANIMALS3.groundhog), u = m.userData;
+    G3.place(m, this.wx, this.wy, 0);
+    u.hole.visible = this.hole > 0.02;
+    u.hole.scale.set(this.hole, Math.max(0.05, this.hole), this.hole);
 
-    // He bobs down a pixel now and then while looking around
-    const bob = (this.state === 'looking' && sin(this.phase) > 0.7) ? 1 : 0;
-    const rows = Math.round(this.emerge * GROUNDHOG_ROWS) - bob;
-    if (rows > 0) {
-      const pose = this.blink > 0 ? 'blink' : (this.lookDir === 0 ? 'front' : 'side');
-      const flip = this.lookDir < 0;
-      PX.spr('groundhog', x, y + 1, { frame: pose + rows, flip });
-    }
-
-    PX.spr('groundhog_hole', x, y + 3, { frame: 'front', alpha: holeAlpha });
+    // He bobs down a little now and then while looking around
+    const bob = (this.state === 'looking' && sin(this.phase) > 0.7) ? 0.07 : 0;
+    u.hog.visible = this.emerge > 0.01;
+    u.hog.position.y = (this.emerge - 1) * (ANIMALS3.HOG_TALL + 0.05) - bob;
+    // he turns his head to glance left and right
+    u.head.rotation.y += (this.lookDir * 0.95 - u.head.rotation.y) * 0.3;
+    u.skull.material[4] = this.blink > 0 ? u.faceShut : u.faceOpen;
   }
 }

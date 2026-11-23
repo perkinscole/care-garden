@@ -5,27 +5,22 @@
 // Last Modified: November 22, 2026
 // Description: Defines Ramy the Ram, the school mascot, who wanders the
 //   garden, grazes on flowers, and produces droppings that grow into new
-//   flowers. Drawn as pixel art from the 'ram' sprite in
-//   js/art/animals_art.js.
+//   flowers. Drawn as a 3D box animal (ANIMALS3.ram in
+//   js/art/animals_art.js).
 // ================================================================
 
-// Distances on the ram sprite, in art pixels from the point between his feet
-const RAM_MOUTH_PX = 20;   // forward to his mouth in every grazing pose
+// Distances along the ram, in art pixels from the point between his feet
+// (the garden is PX.W art pixels wide, so 20 is a little over one block)
+const RAM_MOUTH_PX = 20;   // forward to his mouth when he grazes
 const RAM_TAIL_PX  = 15;   // back to his tail
-const RAM_HEAD_PX  = 11;   // forward to the middle of his raised head
 
-// His three grazing poses, lowest first: the sprite frames, how high his
-// mouth is above the grass in each, and where a speech bubble goes.
-const RAM_GRAZE = [
-  { frames: ['eat0', 'eat1'], mouth: 2,  bubble: 17 },   // head down in the grass
-  { frames: ['nib0', 'nib1'], mouth: 11, bubble: 22 },   // head low and level
-  { frames: ['up0', 'up1'],   mouth: 18, bubble: 28 },   // head up, a little stretched
-];
+// How far his head can reach, in blocks above the lawn
+const RAM_REACH_LOW = 0.12, RAM_REACH_HIGH = 1.45;
 
 // Ram class manages the sheep's state machine (wander/approach/eat/idle),
 // blink cycle, speech bubbles, storm behavior, and poop-to-flower lifecycle.
 class Ram {
-  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+  static g3 = true;      // drawn as a 3D box model (see docs/GARDEN_3D.md)
 
   constructor() {
     this.wx = 0.5;
@@ -40,7 +35,7 @@ class Ram {
     this.eatTimer = 0;
     this.eatTarget = null;  // the flower he is walking to or eating
     this.eatDir = 1;        // which way he will face while eating it
-    this.eatPose = 0;       // index into RAM_GRAZE: how high he is holding his head
+    this.eatPose = 0;       // how high he holds his head to eat: 0 down in the grass, 1 level, 2 up
     this.approachTimer = 0;
     this.blinkTimer = floor(random(80, 200));
     this.blinking = false;
@@ -78,14 +73,9 @@ class Ram {
     speechBubbles.push(new SpeechBubble(text, () => this.headPos()));
   }
 
-  // Art-pixel point just above his head, for speech bubbles and hearts.
+  // Art-pixel point just above his head, for speech bubbles.
   headPos() {
-    const p = worldToPx(this.wx, this.wy);
-    // while he grazes his head is wherever the flower is
-    if (this.state === 'eat') {
-      return { x: p.x + this.dir * (this.eatPose === 0 ? RAM_MOUTH_PX - 3 : RAM_HEAD_PX + 2), y: p.y - RAM_GRAZE[this.eatPose].bubble };
-    }
-    return { x: p.x + this.dir * RAM_HEAD_PX, y: p.y - 26 };
+    return ANIMALS3.artAhead(this, 0.95, (this._headTop || 1.55) + 0.3);
   }
 
   // Which grazing pose puts his mouth on a flower as it stands right now:
@@ -286,54 +276,105 @@ class Ram {
     }
   }
 
-  // Picks the sprite frame that matches what the ram is doing right now.
-  frameName() {
-    const stormy = weatherState === 'stormy';
-    if (this.state === 'eat') return RAM_GRAZE[this.eatPose].frames[PX.anim(2, 9)];
-    if (this.state === 'wander' || this.state === 'approach') {
-      if (stormy) return floor(this.walkPhase / 1.6) % 2 === 0 ? 'run0' : 'run1';
-      const step = floor(this.walkPhase / HALF_PI) % 4;
-      return (this.baaTimer > 0 ? 'talk' : 'walk') + step;
-    }
-    // standing still
-    if (this.isBeingPetted()) return 'pet';
-    if (this.baaTimer > 0) return 'baa';
-    return this.blinking ? 'blink' : 'stand';
+  // How high (in blocks) his mouth should be to eat the flower he is at:
+  // down at its foot for a bud or a stub, otherwise at its bloom, as far
+  // as his neck will stretch. Leaves the spot he is eating at in Ram._v.
+  mouthHeight() {
+    const f = this.eatTarget, v = Ram._v;
+    if (!f) { G3.pos(this.wx + this.dir * 0.03, this.wy, 0, v); return RAM_REACH_LOW; }
+    if (this.eatPose === 0) {
+      if (typeof f.foot3 === 'function') f.foot3(v); else G3.pos(f.wx, f.wy, 0, v);
+      v.y += 0.1;
+    } else if (typeof f.head3 === 'function') f.head3(0, v);
+    else G3.pos(f.wx, f.wy, 1, v);
+    return constrain(v.y, RAM_REACH_LOW, this.eatPose === 2 ? RAM_REACH_HIGH : 1.0);
   }
 
-  // Draws his droppings (which eventually become flowers) and then the ram himself.
+  // Poses his droppings (which eventually become flowers) and then the ram himself.
   draw() {
-    // poops first, so the ram is in front of a fresh one
-    for (const p of this.poops) {
-      const pp = worldToPx(p.wx, p.wy);
-      const y = pp.y - p.drop;
-      if (p.drop === 0) PX.shadow(pp.x, pp.y, 9);
-      PX.spr('ram_poop', pp.x, y, { frame: p.age > 190 ? 'sprout' : 'pile' });
-      // stink lines while it is fresh
-      if (p.drop === 0 && p.age < 170) {
-        PX.spr('ram_stink', pp.x, y - 8, { frame: PX.anim(2, 14), alpha: 0.8 });
-      }
+    if (!Ram._v) Ram._v = new THREE.Vector3();
+    for (const p of this.poops) this.drawPoop(p);
+
+    const m = G3.model(this, ANIMALS3.ram), u = m.userData;
+    const s = this.state;
+    const moving = s === 'wander' || s === 'approach';
+    const running = moving && weatherState === 'stormy';
+    const petted = this.isBeingPetted();
+
+    // where he stands (a gallop bounces) and which way he faces
+    G3.place(m, this.wx, this.wy, running ? Math.abs(Math.sin(this.walkPhase)) * 0.14 : 0);
+    let reach = 0;
+    if (s === 'eat') {
+      // turn his head to the flower itself (it is beside him, a block away)
+      reach = this.mouthHeight();
+      const dx = Ram._v.x - m.position.x, dz = Ram._v.z - m.position.z;
+      if (Math.abs(dx) > 0.4) G3.face(m, dx, dz, 0.25);
+      else G3.face(m, this.dir, 0.1, 0.25);
+    } else ANIMALS3.turn(m, this.wx, this.wy, ANIMALS3.sideYaw(this.dir), 0.2);
+    this._yaw = m.rotation.y;
+
+    // legs: opposite corners together at a walk, front pair against back pair at a gallop
+    const swing = moving ? Math.sin(this.walkPhase) * (running ? 0.95 : 0.5) : 0;
+    u.legs[0].rotation.x = swing;
+    u.legs[1].rotation.x = running ? swing : -swing;
+    u.legs[2].rotation.x = -swing;
+    u.legs[3].rotation.x = running ? -swing : swing;
+    u.rig.rotation.x = running ? Math.cos(this.walkPhase) * 0.1 : 0;
+
+    // neck: swing it so his head is at the right height, keeping his face
+    // level when it is up and pointed at the grass when it is down
+    let headY = 1.26, pitch = 0, jaw = 0;
+    if (s === 'eat') {
+      const chew = PX.anim(2, 9);
+      headY = reach + 0.15 + chew * 0.03;
+      jaw = chew ? 0.4 : 0.05;
+    } else if (this.baaTimer > 0) {
+      if (moving) jaw = Math.floor(frameCount / 6) % 2 ? 0.45 : 0.1;       // talking as he walks
+      else { headY = 1.3; pitch = -0.4; jaw = 0.55; }                      // a proper baa, head thrown back
+    } else if (petted) {
+      headY = 1.2; pitch = 0.15;
+    } else if (moving) {
+      headY += Math.sin(this.walkPhase * 2) * 0.02;
     }
+    const want = Math.acos(constrain((headY - ANIMALS3.RAM_SHOULDER) / ANIMALS3.RAM_NECK, -0.94, 0.96));
+    u.neckA = u.neckA === undefined ? want : u.neckA + (want - u.neckA) * 0.14;
+    if (s === 'eat') pitch = constrain((u.neckA - 0.6) * 0.62, -0.2, 1.3);
+    u.neck.rotation.x = u.neckA;
+    u.head.rotation.x = pitch - u.neckA;
+    u.jaw.rotation.x = jaw;
+    this._headTop = ANIMALS3.RAM_SHOULDER + Math.cos(u.neckA) * ANIMALS3.RAM_NECK + 0.3;
 
-    const { x, y } = worldToPx(this.wx, this.wy);
-    const frame = this.frameName();
-    PX.shadow(x + this.dir, y, frame === 'run0' ? 20 : 24);
-    PX.spr('ram', x, y, { frame, flip: this.dir < 0 });
+    // eyes shut for a blink, and happily shut while he is petted
+    u.skull.material[4] = (petted || (this.blinking && s !== 'eat' && !moving)) ? u.faceShut : u.faceOpen;
+    u.tail.rotation.set(0.35, 0, petted ? Math.sin(frameCount * 0.5) * 0.5 : 0);
 
-    // little hearts float up while he is being petted
-    if (frame === 'pet') {
+    // a heart floats up over his head while he is being petted
+    u.heart.visible = petted;
+    if (petted) {
       const k = (frameCount % 48) / 48;
-      PX.spr('heart', x + this.dir * RAM_HEAD_PX, y - 27 - Math.round(k * 9), { alpha: k < 0.7 ? 1 : 0.5 });
+      u.heart.position.set(Math.sin(m.rotation.y) * 0.9, 1.95 + k * 0.6, Math.cos(m.rotation.y) * 0.9);
+      u.heart.rotation.y = -m.rotation.y;                     // always toward the viewer
+      u.heart.scale.setScalar(k < 0.7 ? 1 : 1 - (k - 0.7) * 2);
+    }
+  }
+
+  // One dropping: it falls from under his tail, steams for a while, then a
+  // sprout comes up through it before it turns into a flower.
+  drawPoop(p) {
+    const m = G3.model(p, ANIMALS3.poop), u = m.userData;
+    G3.place(m, p.wx, p.wy, p.drop / 9 * 0.55);
+    u.sprout.visible = p.age > 190;
+    const fresh = p.drop === 0 && p.age < 170;
+    for (let i = 0; i < 3; i++) {
+      const cube = u.stink[i];
+      cube.visible = fresh;
+      if (!fresh) continue;
+      const k = (frameCount / 50 + i / 3) % 1;
+      cube.position.set((i - 1) * 0.14 + Math.sin(k * 7 + i * 2) * 0.06, 0.35 + k * 0.7, 0);
+      cube.scale.setScalar(1 - k * 0.8);
     }
   }
 }
 
-// I SPY card: Ramy standing proud, blinking, with the odd happy baa.
-CARD_ART.ram = (x, y, tick) => {
-  const beat = tick % 260;
-  let frame = 'stand';
-  if (beat > 200 && beat < 236) frame = 'baa';
-  else if (beat % 90 < 6) frame = 'blink';
-  PX.shadow(x - 2, y, 24);
-  PX.spr('ram', x - 3, y, { frame });
-};
+// I SPY card: Ramy standing proud.
+G3.cardArt('ram', () => ANIMALS3.ram(), { yaw: 0.95 });

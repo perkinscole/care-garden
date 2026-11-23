@@ -5,14 +5,13 @@
 // Last Modified: November 22, 2026
 // Description: Defines the Goose character that idles, wanders the garden,
 //   and occasionally chases the gardener while quacking aggressively.
-//   Drawn as pixel art from the 'goose' and 'goose_chase' sprites in
-//   js/art/animals_art.js.
+//   Drawn as a 3D box animal (ANIMALS3.goose in js/art/animals_art.js).
 // ================================================================
 
 // Goose class manages the goose's state machine (idle/wander/chase),
 // storm panic behavior, quack sounds, and gardener pursuit logic.
 class Goose {
-  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+  static g3 = true;      // drawn as a 3D box model (see docs/GARDEN_3D.md)
 
   constructor() {
     this.wx = random(0.2, 0.8);
@@ -29,10 +28,8 @@ class Goose {
 
   // Art-pixel point just above the goose's head, for speech bubbles.
   headPos() {
-    const p = worldToPx(this.wx, this.wy);
     const charging = this.state === 'chase' || this.panicking;
-    return charging ? { x: p.x + this.dir * 14, y: p.y - 13 }
-                    : { x: p.x + this.dir * 5,  y: p.y - 21 };
+    return charging ? ANIMALS3.artAhead(this, 1.0, 1.35) : ANIMALS3.artAhead(this, 0.4, 1.7);
   }
 
   // Spawns a speech bubble that tracks the goose's head.
@@ -158,30 +155,51 @@ class Goose {
     }
   }
 
-  // Draws the goose: upright when calm, neck out and wings flapping on the attack.
+  // Poses the goose: upright when calm, neck out and wings flapping on the attack.
   draw() {
-    const { x, y } = worldToPx(this.wx, this.wy);
-    const flip = this.dir < 0;
+    const m = G3.model(this, ANIMALS3.goose), u = m.userData;
+    const charging = this.state === 'chase' || this.panicking;
+    const walking = this.state === 'wander' || charging;
 
-    if (this.state === 'chase' || this.panicking) {
-      PX.shadow(x + this.dir * 3, y, 18);
-      PX.spr('goose_chase', x, y, { frame: floor(this.walkPhase / 1.6) % 2, flip });
-      return;
+    G3.place(m, this.wx, this.wy, 0);
+    ANIMALS3.turn(m, this.wx, this.wy, ANIMALS3.sideYaw(this.dir), charging ? 0.35 : 0.2);
+    this._yaw = m.rotation.y;
+
+    const swing = walking ? Math.sin(this.walkPhase) * (charging ? 0.8 : 0.5) : 0;
+    u.legs[0].rotation.x = swing;
+    u.legs[1].rotation.x = -swing;
+
+    // neck: tall and nodding at a walk, thrown forward and low in a charge;
+    // the head stays level either way, and lifts for a honk
+    const honking = this.honkTimer > 0;
+    let neck = 0.08, tip = 0, flap = 0.06, head = 0;
+    if (charging) {
+      neck = 1.2 + Math.sin(this.walkPhase) * 0.06;
+      tip = 0.12;
+      flap = 1.25 + Math.sin(this.walkPhase * 1.4) * 0.75;      // wings beating
+    } else if (this.state === 'wander') {
+      neck = 0.16 + Math.sin(this.walkPhase * 2) * 0.1;
     }
-
-    let frame = 'stand';
-    if (this.state === 'wander') frame = 'walk' + (floor(this.walkPhase / HALF_PI) % 4);
-    if (this.honkTimer > 0) frame = this.state === 'wander' ? 'honk' + frame : 'honk';
-    PX.shadow(x, y, 14);
-    PX.spr('goose', x, y, { frame, flip });
+    if (honking && !charging) { neck -= 0.12; head = -0.3; }
+    u.pose = u.pose || { neck, tip, flap };
+    const p = u.pose;
+    p.neck += (neck - p.neck) * 0.25;
+    p.tip += (tip - p.tip) * 0.25;
+    p.flap += (flap - p.flap) * 0.5;
+    u.rig.rotation.x = p.tip;
+    u.neck.rotation.x = p.neck;
+    u.head.rotation.x = head - p.neck - p.tip;
+    u.bill.rotation.x = honking ? 0.55 : 0;
+    u.wings[0].rotation.z = p.flap;
+    u.wings[1].rotation.z = -p.flap;
   }
 }
 
-// I SPY card: the local menace strutting on the spot and letting out a honk.
-CARD_ART.goose = (x, y, tick) => {
-  const beat = tick % 200;
-  let frame = 'walk' + (Math.floor(tick / 9) % 4);
-  if (beat > 150) frame = beat % 24 < 14 ? 'honk' : 'stand';
-  PX.shadow(x, y, 14);
-  PX.spr('goose', x - 2, y, { frame });
-};
+// I SPY card: the local menace, mid-honk.
+G3.cardArt('goose', () => {
+  const m = ANIMALS3.goose(), u = m.userData;
+  u.bill.rotation.x = 0.5;
+  u.wings[0].rotation.z = 0.5;
+  u.wings[1].rotation.z = -0.5;
+  return m;
+}, { yaw: 0.9 });

@@ -2,41 +2,16 @@
 // File: scene.js
 // Author: Cole Perkins
 // Date Created: March 28, 2026 (refactored April 1, 2026)
-// Last Modified: November 22, 2026
-// Description: Pixel-art scenery for the CARE Garden: the sky layer (sun,
-//              moon, stars, fair-weather clouds), the mown lawn and its
-//              swaying grass tufts, the trees, the picket fence, Robert
-//              Adams Middle School with its waving flag and night-lit
-//              windows, the fireflies, and the school's I SPY card art.
-//              Everything is drawn in art pixels with PX (see
-//              docs/PIXEL_ART.md). The big static pieces are painted once
-//              into offscreen canvases and copied to the screen each frame.
+// Last Modified: November 23, 2026
+// Description: Block-built scenery for the 3D CARE Garden: the lawn and
+//              its swaying grass tufts, the trees, the picket fence,
+//              Robert Adams Middle School with its waving flag and
+//              night-lit windows, the fireflies, and the school's I SPY
+//              card picture. Everything is made of boxes with G3 (see
+//              docs/GARDEN_3D.md): each piece is built once, baked into
+//              as few meshes as possible, and only posed after that.
+//              Also holds skyStops(), the colours of the sky.
 // ================================================================
-
-// ── Offscreen layers ──────────────────────────────────
-// The lawn, the school and the trees never change, so each is painted once
-// into its own small canvas and blitted every frame. A layer is repainted
-// only when the art grid changes (window resize) or its own key changes.
-const SCENE_LAYERS = {};
-
-function sceneLayer(name, w, h, extraKey, paint) {
-  const key = w + 'x' + h + '|' + PX.W + '|' + PX.H + '|' + PX.HOR + '|' + PX.S + '|' + extraKey;
-  let layer = SCENE_LAYERS[name];
-  if (!layer) layer = SCENE_LAYERS[name] = { cv: document.createElement('canvas'), key: null };
-  if (layer.key !== key) {
-    w = Math.max(1, w); h = Math.max(1, h);
-    const g = layer.cv.getContext('2d');
-    if (layer.cv.width !== w || layer.cv.height !== h) {
-      layer.cv.width = w;                // setting the size also wipes the canvas
-      layer.cv.height = h;
-    } else {
-      g.clearRect(0, 0, w, h);
-    }
-    PX.withTarget(g, () => paint(g, w, h));
-    layer.key = key;
-  }
-  return layer.cv;
-}
 
 // Repeatable "random" number 0..1 for a pair of whole numbers. Scenery uses
 // this instead of random() so that it is identical every time it is painted.
@@ -65,47 +40,7 @@ function sceneNightTint() {
   };
 }
 
-// A dithered disc (for the glow around the sun, the moon and fireflies).
-// Discs are cached by size and colour; density is 0.25, 0.5 or 0.75.
-const SCENE_DISCS = new Map();
-
-function sceneDisc(r, col, density) {
-  r = Math.max(1, Math.round(r));
-  const key = r + col + density;
-  let cv = SCENE_DISCS.get(key);
-  if (!cv) {
-    cv = document.createElement('canvas');
-    cv.width = cv.height = r * 2 + 1;
-    const g = cv.getContext('2d');
-    g.fillStyle = col;
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (dx * dx + dy * dy > (r + 0.35) * (r + 0.35)) continue;
-        let on;
-        if (density >= 0.75) on = !((dx & 1) === 0 && (dy & 1) === 0);
-        else if (density >= 0.5) on = ((dx + dy) & 1) === 0;
-        else on = (dx & 1) === 0 && (dy & 1) === 0;
-        if (on) g.fillRect(dx + r, dy + r, 1, 1);
-      }
-    }
-    if (SCENE_DISCS.size > 300) SCENE_DISCS.clear();
-    SCENE_DISCS.set(key, cv);
-  }
-  return cv;
-}
-
-function drawSceneDisc(cx, cy, r, col, density) {
-  r = Math.max(1, Math.round(r));
-  PX.c.drawImage(sceneDisc(r, col, density), Math.round(cx) - r, Math.round(cy) - r);
-}
-
 // ── Sky ───────────────────────────────────────────────
-
-// 0 → 1 → 0 as x goes from a up to the peak and on to b
-function sceneBump(x, a, peak, b) {
-  if (x <= a || x >= b) return 0;
-  return x < peak ? (x - a) / (peak - a) : (b - x) / (b - peak);
-}
 
 // 0 → 1, held at 1 from b to c, → 0 as x goes from a to d
 function scenePlateau(x, a, b, c, d) {
@@ -153,226 +88,11 @@ function skyStops() {
   return stops;
 }
 
-// Draws everything that lives in the sky: stars, moon, rainbow, sun and
-// fair-weather clouds. sketch.js calls this with PX aimed at the sky layer (PX.W x PX.H),
-// which sits behind the world and is not tinted, so this function fades
-// things in and out for night itself.
-function drawSkyLayer() {
-  const na = nightAmount();
-  drawStars(na);
-  drawMoon(na);
-  if (typeof drawRainbow === 'function') drawRainbow();   // behind the sun and the clouds
-  drawSun(na);
-  drawFairClouds(na);
-}
-drawSkyLayer.pixel = true;
-
-// Twinkling stars. Each star steps between dim, bright and (for the big
-// ones) a little cross flare instead of fading smoothly.
-function drawStars(na) {
-  if (na < 0.05) return;
-  const clear = 1 - Math.min(weatherAlpha, 1) * 0.85;   // storm clouds hide the stars
-  for (const s of stars) {
-    const twinkle = sin(t * s.twinkleSpeed + s.twinklePhase) * 0.4 + 0.6;
-    const a = na * twinkle * (s.brightness / 100) * clear;
-    if (a < 0.12) continue;
-    const x = Math.round(s.x * PX.W);
-    const y = Math.round(s.y * PX.HOR);                  // all of them above the horizon
-    if (s.size > 2.3 && a > 0.7) PX.spr('star', x, y, { frame: 'flare' });
-    else if (s.size > 1.6 && a > 0.45) PX.spr('star', x, y, { frame: 'plus' });
-    else PX.px(x, y, a > 0.5 ? PAL.white : a > 0.28 ? PAL.sk2 : PAL.sk3);
-  }
-}
-
-// Crescent moon in the upper left, with a faint halo and earthshine on its
-// dark side. Painted once; faded in as a whole with nightAmount.
-function drawMoon(na) {
-  if (na <= 0.7) return;
-  const r = 13;
-  const size = (r + 8) * 2 + 1;
-  const cv = sceneLayer('moon', size, size, '', () => {
-    const c = r + 8;
-    // Halo: two flat rings a little lighter than the night sky
-    PX.circle(c, c, r + 6, PAL.sk8);
-    PX.circle(c, c, r + 3, PAL.sk7);
-    // The shadow that carves the crescent is a second circle up and to the right
-    const sx = r * 0.5, sy = -r * 0.18, sr = r * 0.95;
-    const earthshine = PX.mix(PAL.sk7, PAL.sk6, 0.5);         // the dark side is faintly lit
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (dx * dx + dy * dy > (r + 0.35) * (r + 0.35)) continue;
-        const inShadow = (dx - sx) * (dx - sx) + (dy - sy) * (dy - sy) <= sr * sr;
-        let col;
-        if (inShadow) {
-          col = earthshine;
-        } else {
-          const edge = (dx - 1) * (dx - 1) + (dy - 1) * (dy - 1) > (r - 0.6) * (r - 0.6);
-          const nearShadow = (dx - sx + 1.5) * (dx - sx + 1.5) + (dy - sy) * (dy - sy) <= sr * sr;
-          col = edge ? PAL.white : nearShadow ? PAL.ta1 : PAL.cream;
-        }
-        PX.px(c + dx, c + dy, col);
-      }
-    }
-    // Craters on the lit limb
-    PX.rect(c - 10, c - 3, 2, 2, PAL.ta1);
-    PX.px(c - 8, c + 5, PAL.ta1);
-    PX.rect(c - 6, c + 8, 2, 1, PAL.ta1);
-    PX.px(c - 7, c - 8, PAL.ta1);
-  });
-  // It hangs in the open sky above the school's low left wing and drifts a
-  // little to the right as the night goes by
-  const night = ((timeOfDay - 0.68 + 1) % 1) / 0.41;        // 0 at dusk, 1 at dawn
-  const mx = Math.round(PX.W * lerp(0.13, 0.23, constrain(night, 0, 1)));
-  const my = Math.max(r + 3, Math.round(PX.HOR * 0.17));
-  // It only appears once the sky is properly dark: its halo is painted in
-  // night-sky colours and would show as a dark disc on a sunset
-  PX.alpha(constrain((na - 0.7) / 0.25, 0, 1), () => PX.c.drawImage(cv, mx - r - 8, my - r - 8));
-}
-
-// The sun on its east-to-west arc. While someone is smiling (sunGlow) it
-// brightens, swells, throws longer rays and wears a smiling face.
-function drawSun(na) {
-  // The sun fades out at dusk and dims behind rain clouds
-  const sunVis = constrain(1.0 - na * 2.5, 0, 1) * (1 - constrain(weatherAlpha * 1.1 - 0.15, 0, 0.9));
-  if (sunVis <= 0.01) return;
-
-  // Sun arcs across the sky: rises at dawn, peaks at midday, sets at sunset
-  const sunRise = 0.07;   // time the sun starts to climb
-  const sunSet  = 0.66;   // time it has gone down again
-  const sunProgress = constrain(map(timeOfDay, sunRise, sunSet, 0, 1), 0, 1);
-  // Horizontal: from east (left) to west (right)
-  const cx = Math.round(lerp(PX.W * 0.08, PX.W * 0.86, sunProgress));
-  // Vertical: the town and the school fill the sky up to the roofline, so
-  // only a strip along the top is open. The sun climbs out from behind the
-  // roofs quickly, rides along that strip for most of the day and sinks
-  // again at the end (a flat-topped arc instead of a parabola).
-  const lowY  = Math.round(PX.HOR * 0.5);                   // out of sight behind the roofs
-  const highY = Math.max(15, Math.round(PX.HOR * 0.155));   // riding high
-  const climb = 1 - Math.pow(Math.abs(2 * sunProgress - 1), 3);
-  const cy = Math.round(lerp(lowY, highY, climb));
-
-  // Toward sunset the sun turns from yellow to deep orange (in five steps,
-  // so the cached glow discs are reused)
-  const lowSun = Math.max(
-    (timeOfDay > 0.45 && timeOfDay < 0.7) ? constrain(map(timeOfDay, 0.45, 0.65, 0, 1), 0, 1) : 0,
-    constrain(map(timeOfDay, 0.12, 0.07, 0, 0.75), 0, 0.75));
-  const sf = Math.round(lowSun * 4) / 4;
-  const core = PX.mix(PAL.ye1, PAL.ye2, sf);
-  const body = PX.mix(PAL.ye2, PAL.or1, sf);
-  const rim  = PX.mix(PAL.ye3, PAL.or2, sf);
-  const dark = PX.mix(PAL.ye4, PAL.or3, sf);
-
-  const g = constrain(sunGlow, 0, 1);
-  const R = 14 + Math.round(g * 2);
-
-  PX.alpha(sunVis, () => {
-    // Soft halo: a faint ring normally, wide and bright while glowing
-    const halo = PX.mix(PAL.white, core, 0.6);
-    if (g > 0.05) drawSceneDisc(cx, cy, R + 5 + g * 11, halo, 0.25);
-    drawSceneDisc(cx, cy, R + 3 + g * 5, halo, g > 0.4 ? 0.5 : 0.25);
-
-    // Rays: eight long and eight short, turning slowly in small steps
-    const step = Math.floor(t * 0.003 / (TWO_PI / 96));
-    const inner = R + 3;
-    const longRay = Math.round(lerp(6, 9, g)), shortRay = Math.round(lerp(3, 5, g));
-    const thick = g > 0.5 ? 2 : 1;
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * TWO_PI + step * (TWO_PI / 96);
-      const len = i % 2 === 0 ? longRay : shortRay;
-      const ca = Math.cos(a), sa = Math.sin(a);
-      PX.line(cx + ca * inner, cy + sa * inner, cx + ca * (inner + len), cy + sa * (inner + len),
-              i % 2 === 0 ? body : core, thick);
-    }
-
-    // Disc: darker rim, bright body, a paler heart up and to the left
-    PX.circle(cx, cy, R, rim);
-    PX.circle(cx, cy, R - 1, body);
-    PX.circle(cx - 2, cy - 2, R - 5, core);
-
-    // Smiling face while someone is smiling at the camera
-    if (g > 0.3 && sunVis > 0.5) {
-      PX.alpha(constrain((g - 0.3) * 3, 0, 1), () => {
-        PX.rect(cx - 5, cy - 4, 2, 3, dark);        // eyes
-        PX.rect(cx + 4, cy - 4, 2, 3, dark);
-        PX.rect(cx - 8, cy + 1, 2, 2, PAL.or1);     // rosy cheeks
-        PX.rect(cx + 7, cy + 1, 2, 2, PAL.or1);
-        PX.rect(cx - 5, cy + 2, 1, 2, dark);        // smile
-        PX.rect(cx - 4, cy + 4, 2, 1, dark);
-        PX.rect(cx - 2, cy + 5, 5, 1, dark);
-        PX.rect(cx + 3, cy + 4, 2, 1, dark);
-        PX.rect(cx + 5, cy + 2, 1, 2, dark);
-      });
-    }
-  });
-}
-
-// Fair-weather cloud shapes: overlapping ellipses [cx, cy, rx, ry] cut off
-// flat by the bottom of their canvas.
-const CLOUD_SHAPES = [
-  { w: 56, h: 17, blobs: [[9, 15, 8, 5], [20, 12, 10, 8], [32, 9, 12, 9], [44, 13, 9, 7], [51, 16, 5, 3]] },
-  { w: 38, h: 13, blobs: [[7, 11, 6, 4], [17, 8, 9, 7], [28, 10, 8, 6], [34, 12, 4, 3]] },
-  { w: 26, h: 9,  blobs: [[6, 8, 5, 3], [13, 6, 7, 5], [20, 7, 5, 4]] },
-  { w: 66, h: 12, blobs: [[9, 11, 8, 3], [22, 9, 11, 6], [38, 8, 12, 7], [52, 10, 9, 5], [60, 11, 5, 3]] },
-];
-
-// Where each drifting cloud starts, how high it floats and how fast it goes
-// (y is a fraction of the way down to the horizon; only the top third of
-// the sky shows above the roofs, so the clouds keep to it)
-const FAIR_CLOUDS = [
-  { shape: 0, x: 0.06, y: 0.08, speed: 0.80 },
-  { shape: 1, x: 0.36, y: 0.02, speed: 0.60 },
-  { shape: 3, x: 0.62, y: 0.17, speed: 0.70 },
-  { shape: 2, x: 0.84, y: 0.11, speed: 0.50 },
-  { shape: 1, x: 1.02, y: 0.20, speed: 0.65 },
-];
-
-// Paints one cloud: lit along its top-left edges, shaded underneath.
-function paintCloud(shape, hi, body, shade) {
-  const { w, h, blobs } = shape;
-  const inside = (x, y) => {
-    if (x < 0 || y < 0 || x >= w || y >= h) return false;
-    for (const b of blobs) {
-      const dx = (x - b[0]) / (b[2] + 0.4), dy = (y - b[1]) / (b[3] + 0.4);
-      if (dx * dx + dy * dy <= 1) return true;
-    }
-    return false;
-  };
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (!inside(x, y)) continue;
-      let col = body;
-      if (!inside(x, y - 1) || !inside(x - 1, y - 1)) col = hi;
-      else if (!inside(x, y + 2) || !inside(x + 2, y + 1)) col = shade;
-      else if (!inside(x, y + 3) && ((x + y) & 1) === 0) col = shade;
-      PX.px(x, y, col);
-    }
-  }
-}
-
-// Drifting fair-weather clouds. They pick up the colour of the sky behind
-// them (peach at sunset, slate at night) and fade out as bad weather rolls in.
-function drawFairClouds(na) {
-  const vis = constrain(1.0 - weatherAlpha * 1.2, 0, 1) * lerp(1.0, 0.6, na);
-  if (vis <= 0.02) return;
-  // Clouds are repainted only when the sky colour has moved on a step
-  const step = Math.floor(timeOfDay * 240);
-  const stops = skyStops();
-  const skyMid = stops[Math.floor(stops.length / 2)], skyLow = stops[stops.length - 1];
-  const hi    = PX.mix(PAL.white, skyLow, lerp(0.05, 0.62, na));
-  const body  = PX.mix(PAL.white, skyLow, lerp(0.22, 0.72, na));
-  const shade = PX.mix(PX.mix(PAL.white, skyMid, lerp(0.5, 0.85, na)), PAL.sl2, 0.18);
-  const drift = (t * 0.25 + windX * 12) / 3;
-  const span = PX.W + 90;
-  PX.alpha(vis, () => {
-    for (let i = 0; i < FAIR_CLOUDS.length; i++) {
-      const fc = FAIR_CLOUDS[i], shape = CLOUD_SHAPES[fc.shape];
-      const cv = sceneLayer('cloud' + fc.shape, shape.w, shape.h, step + '|' + Math.round(weatherAlpha * 10),
-        () => paintCloud(shape, hi, body, shade));
-      const x = (((fc.x * PX.W + drift * fc.speed) % span) + span) % span - 70;
-      PX.c.drawImage(cv, Math.round(x), Math.round(4 + fc.y * PX.HOR));
-    }
-  });
-}
+// The sun, moon, stars and clouds are drawn by drawSkyLayer() in
+// js/weather.js, which loads after this file. Until it has been defined
+// this stand-in keeps sketch.js running (a later `function drawSkyLayer`
+// simply replaces it).
+if (typeof drawSkyLayer === 'undefined') window.drawSkyLayer = function () {};
 
 // ── Lawn ──────────────────────────────────────────────
 
@@ -411,744 +131,739 @@ function drawGround() {
 }
 drawGround.g3 = true;
 
-// Paints one grass tuft with its root at (x, y): three little blades whose
-// tips lean left (-1), stand straight (0) or lean right (+1).
-function paintTuft(x, y, dark, tall, wide, lean) {
-  const blade = dark ? PAL.gr4 : PAL.gr2;
-  const root  = dark ? PAL.gr5 : PAL.gr4;
-  PX.rect(x - 1, y, 3, 1, root);                     // base
-  PX.rect(x, y - tall + 1, 1, tall - 1, blade);      // middle blade
-  PX.px(x + lean, y - tall, blade);                  // its tip
-  PX.px(x - 2, y - 1, root);                         // left blade
-  PX.px(x - 2 + lean, y - 2, blade);
-  if (wide) {                                        // wider tufts get a right blade
-    PX.px(x + 2, y - 1, root);
-    PX.px(x + 2 + lean, y - 2, blade);
+// ── Box-baking helpers ────────────────────────────────
+// Scenery is described as lists of boxes [x0, x1, y0, y1, z0, z1] (in
+// blocks) and baked into one mesh per texture or material.
+
+// The six faces of a box: normal axis, its sign, and the two in-plane axes
+// (u x v points along the positive axis)
+const SCENE_FACES = [[0, 1, 1, 2], [0, -1, 1, 2], [1, 1, 2, 0], [1, -1, 2, 0], [2, 1, 0, 1], [2, -1, 0, 1]];
+
+// Bakes boxes into one geometry. With colours (one '#rrggbb' per box) it
+// carries vertex colours; without, texture coordinates laid out in world
+// space (one repeat per block), so walls built from several boxes show
+// no seam where the boxes meet. A box may carry one more number after
+// its six (or after its colour): a bit mask of faces to leave out (in SCENE_FACES order, bit 0 =
+// +x), for faces buried inside a wall. (A buried face seen exactly
+// edge-on can flicker through as a hairline.)
+function sceneBoxGeo(boxes, colours) {
+  let faces = 0;
+  const M = colours ? 7 : 6;                 // where a box keeps its mask
+  for (const b of boxes) for (let f = 0; f < 6; f++) if (!((b[M] || 0) >> f & 1)) faces++;
+  const pos = new Float32Array(faces * 12), nor = new Float32Array(faces * 12);
+  const col = colours ? new Float32Array(faces * 12) : null, uv = colours ? null : new Float32Array(faces * 8);
+  const idx = new (faces * 4 > 65535 ? Uint32Array : Uint16Array)(faces * 6);
+  const pt = [0, 0, 0], c = new THREE.Color();
+  let p = 0, q = 0, ii = 0, vi = 0;
+  for (let bi = 0; bi < boxes.length; bi++) {
+    const b = boxes[bi];
+    if (colours) c.set(colours[bi]);
+    for (let f = 0; f < 6; f++) {
+      if ((b[M] || 0) >> f & 1) continue;
+      const ax = SCENE_FACES[f][0], sg = SCENE_FACES[f][1], u = SCENE_FACES[f][2], v = SCENE_FACES[f][3];
+      for (let k = 0; k < 4; k++) {
+        pt[ax] = b[ax * 2 + (sg > 0 ? 1 : 0)];
+        pt[u] = b[u * 2 + ((k === 1 || k === 2) ? 1 : 0)];
+        pt[v] = b[v * 2 + (k >= 2 ? 1 : 0)];
+        pos[p] = pt[0]; pos[p + 1] = pt[1]; pos[p + 2] = pt[2];
+        nor[p] = ax === 0 ? sg : 0; nor[p + 1] = ax === 1 ? sg : 0; nor[p + 2] = ax === 2 ? sg : 0;
+        if (colours) { col[p] = c.r; col[p + 1] = c.g; col[p + 2] = c.b; }
+        else {
+          uv[q++] = ax === 0 ? pt[2] : pt[0];
+          uv[q++] = ax === 1 ? pt[2] : pt[1];
+        }
+        p += 3;
+      }
+      if (sg > 0) { idx[ii++] = vi; idx[ii++] = vi + 1; idx[ii++] = vi + 2; idx[ii++] = vi; idx[ii++] = vi + 2; idx[ii++] = vi + 3; }
+      else        { idx[ii++] = vi; idx[ii++] = vi + 2; idx[ii++] = vi + 1; idx[ii++] = vi; idx[ii++] = vi + 3; idx[ii++] = vi + 2; }
+      vi += 4;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  if (colours) g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  else g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.userData.own = true;
+  return g;
+}
+
+// Boxes baked into ONE mesh textured with a block texture.
+function sceneTexMesh(boxes, blockName) {
+  const m = new THREE.Mesh(sceneBoxGeo(boxes), G3.blockMat(blockName));
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+// Adds a flat-coloured box to a list for sceneColourMesh
+function sceneBox(list, x0, x1, y0, y1, z0, z1, c, skip) {
+  list.push([x0, x1, y0, y1, z0, z1, c, skip || 0]);
+}
+
+// Bakes a list of flat-coloured boxes into one mesh (optionally with its
+// own material, for things that glow).
+let _sceneVertexMat = null;
+function sceneColourMesh(list, material, shadow) {
+  if (!_sceneVertexMat) _sceneVertexMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const m = new THREE.Mesh(sceneBoxGeo(list, list.map(b => b[6])), material || _sceneVertexMat);
+  m.castShadow = shadow !== false; m.receiveShadow = true;
+  return m;
+}
+
+// Materials that change through the day: created once, shared by the
+// school in the garden and the one on the I SPY card.
+let _sceneMats = null;
+function sceneMats() {
+  if (_sceneMats) return _sceneMats;
+  const glow = (emissive, extra) => new THREE.MeshLambertMaterial(
+    Object.assign({ vertexColors: true, emissive: new THREE.Color(emissive), emissiveIntensity: 0 }, extra || {}));
+  _sceneMats = {
+    glass: glow(PAL.ye2),                    // windows with the lights on
+    hall: glow(PAL.ye3),                     // the back of the entrance hall
+    sign: glow(PAL.cream),                   // the sign lettering, lit at night
+    spill: new THREE.MeshBasicMaterial({ color: new THREE.Color(PAL.ye1), transparent: true, opacity: 0, depthWrite: false }),
+  };
+  return _sceneMats;
+}
+
+// ── Grass ─────────────────────────────────────────────
+
+// The grass tufts scattered over the lawn: little blades one texel wide,
+// with a tiny wildflower here and there. All 600 tufts are baked into
+// three meshes; each mesh leans as a whole (a shear, so the roots stay
+// put) with the wind and a slow sway of its own, in whole-texel steps.
+const GRASS_GROUPS = 3;
+const GRASS_HOLD = 6;          // game frames each pose of the swaying grass is held
+let _grass = null;
+
+function buildGrass() {
+  const T = G3.T, lists = [];
+  for (let i = 0; i < GRASS_GROUPS; i++) lists.push([]);
+  const S = SCHOOL3;
+  for (let i = 0; i < grassBlades.length; i++) {
+    const b = grassBlades[i];
+    const x = Math.round((b.wx - 0.5) * G3.GW / T) * T, z = Math.round(b.wy * G3.GD / T) * T;
+    if (z < S.sidewalk.z1 + 0.25) continue;                             // keep the sidewalk clear
+    if (Math.abs(x) < S.apron.x1 + 0.25 && z < S.apron.z1 + 0.25) continue;
+    const list = lists[Math.floor(b.phase / (Math.PI * 2) * GRASS_GROUPS) % GRASS_GROUPS];
+    const tall = 0.14 + (b.h - 5) / 7 * 0.2;                            // 0.14 .. 0.34 block
+    const col = b.shade < 111 ? PAL.gr4 : PAL.gr2;
+    const blade = (dx, dz, h, c) => sceneBox(list, x + dx - T / 2, x + dx + T / 2, 0, h, z + dz - T / 2, z + dz + T / 2, c);
+    blade(0, 0, tall, col);
+    blade(-2 * T, T, tall * 0.55, col);
+    if (b.w > 1.2) blade(2 * T, -T, tall * 0.7, b.shade < 111 ? PAL.gr5 : PAL.gr4);
+    if (sceneHash(i, 5) < 0.075) {                                      // a wildflower
+      const head = WILDFLOWER_COLOURS[Math.floor(sceneHash(i, 9) * WILDFLOWER_COLOURS.length)];
+      blade(T, 2 * T, 0.26, PAL.gr4);
+      sceneBox(list, x, x + 2 * T, 0.26, 0.26 + 2 * T, z + T, z + 3 * T, head);
+    }
+  }
+  const group = new THREE.Group();
+  group.userData.parts = [];
+  for (const list of lists) {
+    if (!list.length) continue;
+    const m = sceneColourMesh(list, null, false);
+    m.matrixAutoUpdate = false;
+    m.userData.lean = 0;
+    group.add(m);
+    group.userData.parts.push(m);
+  }
+  return group;
+}
+
+function drawGrass() {
+  if (!_grass) { _grass = buildGrass(); G3.scene.add(_grass); }
+  if (G3.frame % GRASS_HOLD !== 0) return;
+  const parts = _grass.userData.parts;
+  for (let i = 0; i < parts.length; i++) {
+    const s = Math.sin(t * 0.06 + i * 2.1) * 0.7 + windX * 1.3;
+    const lean = s > 0.5 ? 1 : s < -0.5 ? -1 : 0;
+    const m = parts[i];
+    if (m.userData.lean === lean) continue;
+    m.userData.lean = lean;
+    m.matrix.identity();
+    m.matrix.elements[4] = lean * 0.2;       // x += lean * 0.2 * y: the tips lean a texel
+    m.matrixWorldNeedsUpdate = true;
   }
 }
-
-// Every kind of tuft (2 colours x 3 heights x 2 widths x 3 leans) lives in
-// one small sheet of 8x6 cells.
-const TUFT_W = 8, TUFT_H = 6;
-const TUFT_HOLD = 6;      // game frames each pose of the swaying grass is held
-
-// Draws the grass tufts scattered over the lawn. Only their tips move,
-// leaning with the wind and a slow sway of their own. All 600 tufts are
-// stamped into one lawn-sized layer; the layer is redrawn every few frames
-// (pixel-art animation holds its frames anyway) and copied to the screen
-// in a single step, so the grass costs almost nothing.
-function drawGrass() {
-  const sheet = sceneLayer('tufts', TUFT_W * 3, TUFT_H * 12, '', () => {
-    for (let kind = 0; kind < 12; kind++) {
-      for (let lean = -1; lean <= 1; lean++) {
-        paintTuft((lean + 1) * TUFT_W + 3, kind * TUFT_H + TUFT_H - 1,
-                  kind >= 6, 2 + (kind % 6 >> 1), kind % 2 === 1, lean);
-      }
-    }
-  });
-  const layer = sceneLayer('grass', PX.W, PX.H - PX.HOR, Math.floor(t / TUFT_HOLD), g => {
-    // Where each tuft stands only changes when the screen does
-    const gridKey = PX.W + '|' + PX.H + '|' + PX.HOR;
-    const cutoff = PX.HOR + 16;        // keep the sidewalk in front of the school clear
-    const gust = windX * 1.3;
-    for (const b of grassBlades) {
-      if (b.gridKey !== gridKey) {
-        const p = worldToPx(b.wx, b.wy);
-        b.gridKey = gridKey;
-        b.px = p.x - 3;
-        b.py = p.y - PX.HOR - TUFT_H + 1;
-        b.hidden = p.y < cutoff;
-        const tall = b.h > 9.5 ? 2 : b.h > 7 ? 1 : 0;
-        b.kind = (b.shade < 111 ? 6 : 0) + tall * 2 + (b.w > 1.2 ? 1 : 0);
-      }
-      if (b.hidden) continue;
-      const s = Math.sin(t * 0.06 + b.phase) * 0.7 + gust + b.lean * 2;
-      const lean = s > 0.5 ? 2 : s < -0.5 ? 0 : 1;
-      g.drawImage(sheet, lean * TUFT_W, b.kind * TUFT_H, TUFT_W, TUFT_H, b.px, b.py, TUFT_W, TUFT_H);
-    }
-  });
-  PX.c.drawImage(layer, 0, PX.HOR);
-}
-drawGrass.pixel = true;
+drawGrass.g3 = true;
 
 // ── Trees ─────────────────────────────────────────────
 
-// Trees along the back of the lawn, either side of the school. `at` works
-// out the art x of the trunk from the school's layout; kind picks the
-// painter below. The left-hand side of the town is narrow and holds the
-// shop signs (Superette, Fiske's, CVS), so only one slim pine stands there,
-// tucked against the corner of the school.
+// Where the trees stand, in blocks (x, z): beside the two ends of the
+// school, behind the fence, and along the two sides of the lawn, outside
+// the part where flowers grow. s scales the whole tree.
 const TREE_SPOTS = [
-  { at: L => L.wingL - 7,                                kind: 'pine'  },
-  { at: L => Math.max(L.canopyR + 8, PX.W - 36),         kind: 'pine'  },
-  { at: L => PX.W - 10,                                  kind: 'maple' },
+  { x: -17.4, z: -1.7, kind: 'pine',  s: 1.0 },
+  { x: 14.7,  z: -1.5, kind: 'pine',  s: 1.05 },
+  { x: 18.0,  z: -2.6, kind: 'maple', s: 1.0 },
+  { x: -21.2, z: 4.4,  kind: 'maple', s: 1.05 },
+  { x: -20.4, z: 10.2, kind: 'pine',  s: 0.95 },
+  { x: 20.6,  z: 3.8,  kind: 'pine',  s: 1.0 },
+  { x: 20.8,  z: 9.8,  kind: 'maple', s: 0.95 },
 ];
 
-// A pine: stacked tiers that get wider toward the ground. Lit on the left,
-// shaded on the right and under each tier.
-function paintPine(g, w, h) {
-  const cx = Math.floor(w / 2);
-  PX.rect(cx - 1, h - 7, 3, 7, PAL.wo3);
-  PX.rect(cx + 1, h - 7, 1, 7, PAL.wo4);
-  const tiers = [[23, 34, 10], [15, 27, 9], [7, 19, 7], [0, 11, 5]];   // [top, bottom, half-width]
-  for (let ti = 0; ti < tiers.length; ti++) {
-    const [y0, y1, hw] = tiers[ti];
-    for (let y = y0; y <= y1; y++) {
-      const f = (y - y0) / (y1 - y0);
-      const half = Math.round(f * hw);
-      for (let dx = -half; dx <= half; dx++) {
-        let col = PAL.fo3;
-        if (dx > half * 0.3) col = PAL.fo4;
-        else if (dx < -half * 0.4) col = PAL.fo2;
-        if (y === y1) col = dx > 0 ? PAL.fo5 : PAL.fo4;                 // underside
-        else if (dx === -half && f > 0.35 && sceneHash(ti * 31 + y, 7) > 0.5) col = PAL.fo1;
-        PX.px(cx + dx, y, col);
-      }
-      // Ragged fringe hanging below the tier
-      if (y === y1) {
-        for (let dx = -half + 1; dx <= half - 1; dx += 2) PX.px(cx + dx, y + 1, dx > 0 ? PAL.fo5 : PAL.fo4);
-      }
+// A pine: a short log trunk under stacked leaf slabs that get smaller
+// toward the top, each tier a wide slab with a narrower one on it.
+function buildPine() {
+  const tree = new THREE.Group(), canopy = new THREE.Group();
+  tree.add(sceneTexMesh([[-0.22, 0.22, 0, 1.3, -0.22, 0.22]], 'log'));
+  const dark = [], mid = [];
+  const widths = [3.2, 2.3, 2.7, 1.8, 2.1, 1.3, 1.5, 0.8];
+  let y = 1.0;
+  for (let i = 0; i < widths.length; i++) {
+    const hw = widths[i] / 2;
+    (i % 2 === 0 ? dark : mid).push([-hw, hw, y, y + 0.5, -hw, hw]);
+    y += 0.5;
+  }
+  mid.push([-0.2, 0.2, y, y + 0.55, -0.2, 0.2]);          // the tip
+  canopy.add(sceneTexMesh(dark, 'leaves_pine'), sceneTexMesh(mid, 'leaves'));
+  tree.add(canopy);
+  tree.userData.canopy = canopy;
+  return tree;
+}
+
+// A maple: a log-block trunk under a rounded canopy of leaf cubes in two
+// greens. seed changes which cubes are light and which corners are missing.
+function buildMaple(seed) {
+  const tree = new THREE.Group(), canopy = new THREE.Group();
+  tree.add(sceneTexMesh([[-0.25, 0.25, 0, 2.6, -0.25, 0.25]], 'log'));
+  const C = 0.8;                                             // one leaf cube
+  const a = [], b = [];
+  const layers = [
+    (x, z) => Math.abs(x) + Math.abs(z) <= 2 && Math.abs(z) <= 1,
+    (x, z) => Math.abs(x) <= 2 && Math.abs(z) <= 2 && Math.abs(x) + Math.abs(z) < 4,
+    (x, z) => Math.abs(x) <= 2 && Math.abs(z) <= 1 && Math.abs(x) + Math.abs(z) < 3,
+    (x, z) => Math.abs(x) + Math.abs(z) <= 1,
+  ];
+  for (let l = 0; l < layers.length; l++) {
+    for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
+      if (!layers[l](x, z)) continue;
+      const k = sceneHash(x * 7 + l * 31 + seed * 101, z * 13 + l);
+      const edge = Math.abs(x) === 2 || Math.abs(z) === 2;
+      if (edge && k > 0.82) continue;                        // a ragged outline
+      const y0 = 2.0 + l * C;
+      // lighter leaves toward the top and the sunny left side
+      const light = k < 0.2 + l * 0.14 - x * 0.06;
+      (light ? b : a).push([(x - 0.5) * C, (x + 0.5) * C, y0, y0 + C, (z - 0.5) * C, (z + 0.5) * C]);
     }
   }
-  PX.px(cx, 0, PAL.fo2);
+  canopy.add(sceneTexMesh(a, 'leaves'));
+  if (b.length) canopy.add(sceneTexMesh(b, 'leaves_light'));
+  tree.add(canopy);
+  tree.userData.canopy = canopy;
+  return tree;
 }
 
-// A round maple: a trunk under a crown built from overlapping clumps.
-function paintMaple(g, w, h) {
-  const cx = Math.floor(w / 2);
-  PX.rect(cx - 1, h - 14, 3, 14, PAL.wo3);
-  PX.rect(cx + 1, h - 14, 1, 14, PAL.wo4);
-  PX.rect(cx - 2, h - 2, 5, 2, PAL.wo3);
-  PX.px(cx + 2, h - 1, PAL.wo4);
-  PX.line(cx - 1, h - 13, cx - 4, h - 17, PAL.wo3);
-  PX.line(cx + 1, h - 13, cx + 4, h - 17, PAL.wo4);
-  const clumps = [[cx, 14, 10], [cx - 7, 16, 6], [cx + 7, 17, 6], [cx - 4, 8, 7], [cx + 4, 9, 7], [cx, 20, 7]];
-  for (const [x, y, r] of clumps) PX.circle(x + 1, y + 1, r, PAL.fo5);     // deep shade, lower right
-  for (const [x, y, r] of clumps) PX.circle(x, y, r, PAL.fo4);
-  for (const [x, y, r] of clumps) PX.circle(x - 1, y - 1, r - 2, PAL.fo3);
-  const lights = [[cx - 5, 6, 3], [cx + 3, 6, 3], [cx - 9, 13, 3], [cx - 2, 12, 3], [cx + 6, 13, 2], [cx - 4, 19, 2]];
-  for (const [x, y, r] of lights) PX.circle(x, y, r, PAL.fo2);
-  for (const [x, y, r] of lights) PX.rect(x - r + 1, y - r, Math.max(1, r - 1), 1, PAL.fo1);
-}
-
-const TREE_KINDS = {
-  pine:  { w: 23, h: 42, paint: paintPine },
-  maple: { w: 29, h: 40, paint: paintMaple },
-};
-
-// Draws the trees. Sway is done pixel-art style: the crown is cut into
-// three slices and the upper slices slide sideways a pixel or two.
-// solidOnly leaves out the soft ground shadows (see drawTownOccluders).
-function drawTrees(solidOnly) {
-  const L = schoolLayout();
-  for (let i = 0; i < TREE_SPOTS.length; i++) {
-    const spot = TREE_SPOTS[i];
-    const kind = TREE_KINDS[spot.kind];
-    const cv = sceneLayer('tree_' + spot.kind, kind.w, kind.h, '', kind.paint);
-    const x = Math.round(spot.at(L)) - Math.floor(kind.w / 2);
-    const y = PX.HOR + 3 - kind.h;        // the trunk goes down behind the fence
-    const sway = sin(t * 0.012 + i * 2.3) * 1.1 + windX * 1.2;
-    const topShift = constrain(Math.round(sway), -2, 2);
-    const midShift = constrain(Math.round(sway * 0.5), -1, 1);
-    const a = Math.round(kind.h * 0.3), b = Math.round(kind.h * 0.6);
-    if (!solidOnly) PX.shadow(x + Math.floor(kind.w / 2) + 2, PX.HOR + 3, kind.w - 4);
-    PX.c.drawImage(cv, 0, b, kind.w, kind.h - b, x, y + b, kind.w, kind.h - b);
-    PX.c.drawImage(cv, 0, a, kind.w, b - a, x + midShift, y + a, kind.w, b - a);
-    PX.c.drawImage(cv, 0, 0, kind.w, a, x + topShift, y, kind.w, a);
+// Builds the trees once; after that only their canopies move, sliding a
+// texel or two with the wind.
+let _trees = null;
+function drawTrees() {
+  if (!_trees) {
+    _trees = new THREE.Group();
+    _trees.userData.canopies = [];
+    for (let i = 0; i < TREE_SPOTS.length; i++) {
+      const spot = TREE_SPOTS[i];
+      const tree = spot.kind === 'pine' ? buildPine() : buildMaple(i);
+      tree.position.set(spot.x, 0, spot.z);
+      tree.scale.setScalar(spot.s);
+      _trees.add(tree);
+      _trees.userData.canopies.push(tree.userData.canopy);
+    }
+    G3.scene.add(_trees);
+  }
+  const canopies = _trees.userData.canopies;
+  for (let i = 0; i < canopies.length; i++) {
+    const sway = Math.sin(t * 0.012 + i * 2.3) * 1.1 + windX * 1.2;
+    canopies[i].position.x = Math.max(-2, Math.min(2, Math.round(sway))) * G3.T;
   }
 }
-drawTrees.pixel = true;
+drawTrees.g3 = true;
 
-// Stamps everything that stands in front of the town (the trees as they
-// are swaying right now, the fence and the school) into the current PX
-// target. town.js uses it to cut those shapes out of its night lights, so
-// no lit shop window shines through a tree, a picket or a classroom wall.
-function drawTownOccluders() {
-  const school = SCENE_LAYERS.school;
-  if (school && school.key) PX.c.drawImage(school.cv, 0, 0);
-  drawTrees(true);
-}
+// The town used to cut the trees and the school out of its night lights.
+// In 3D the depth buffer does that; kept so old callers do no harm.
+function drawTownOccluders() {}
 
 // ── Robert Adams Middle School ────────────────────────
 
-// Lettering for the sign on the school wall: bold capitals 8 pixels tall
-// with two-pixel stems, so the name reads from across the room.
-const SIGN_GLYPHS = {
-  R: ['111110', '110011', '110011', '110011', '111110', '110110', '110011', '110011'],
-  O: ['011110', '110011', '110011', '110011', '110011', '110011', '110011', '011110'],
-  B: ['111110', '110011', '110011', '111110', '110011', '110011', '110011', '111110'],
-  E: ['111111', '110000', '110000', '111110', '110000', '110000', '110000', '111111'],
-  T: ['111111', '001100', '001100', '001100', '001100', '001100', '001100', '001100'],
-  A: ['011110', '110011', '110011', '110011', '111111', '110011', '110011', '110011'],
-  D: ['111110', '110011', '110011', '110011', '110011', '110011', '110011', '111110'],
-  M: ['1100011', '1110111', '1111111', '1101011', '1100011', '1100011', '1100011', '1100011'],
-  S: ['011111', '110000', '110000', '011110', '000011', '000011', '000011', '111110'],
-  I: ['1111', '0110', '0110', '0110', '0110', '0110', '0110', '1111'],
-  L: ['110000', '110000', '110000', '110000', '110000', '110000', '110000', '111111'],
-  C: ['011110', '110011', '110000', '110000', '110000', '110000', '110011', '011110'],
-  H: ['110011', '110011', '110011', '111111', '110011', '110011', '110011', '110011'],
+// The plan of the school, in blocks. The front wall is at z = 0 and the
+// building goes back to z = back. Left to right: a dark brick wing with a
+// side door, the taller brick block that carries the sign, the white
+// entrance tower (centred on x = 0, wx = 0.5) with the two main doorways,
+// a lower brick section, and the sandstone wing. `h` is the top of each
+// wall; a parapet stands `parapet` higher.
+const SCHOOL3 = {
+  back: -7,
+  parapet: 0.3,
+  sections: {
+    wingL: { x0: -15.5, x1: -10.5, h: 4.7, tex: 'brick_dark',  plinth: PAL.g3 },
+    mass:  { x0: -10.5, x1: -3,    h: 6.0, tex: 'brick',       plinth: PAL.g3 },
+    tower: { x0: -3,    x1: 3,     h: 7.7, tex: 'panel_white', plinth: PAL.g2 },
+    mid:   { x0: 3,     x1: 7.5,   h: 4.7, tex: 'brick',       plinth: PAL.g3 },
+    stone: { x0: 7.5,   x1: 12.5,  h: 5.2, tex: 'sandstone',   plinth: PAL.ta3 },
+  },
+  // The two main doorways (see the School contract in docs/GARDEN_3D.md):
+  // open, dark inside, x from 0.1 to 1.3 and mirrored, 2.25 blocks tall.
+  door: { x0: 0.1, x1: 1.3, h: 2.25, depth: 2.5 },
+  sidewalk: { x0: -19, x1: 19, z0: 0, z1: 1.2, y: 0.03 },
+  apron: { x0: -3.7, x1: 3.7, z1: 1.6 },            // paving under the portico
+  portico: { x0: -3.25, x1: 3.25, y0: 2.7, y1: 3.4, z1: 1.45 },
+  canopy: { x0: 3.25, x1: 13.0, y0: 2.75, y1: 3.1, z1: 1.3 },
+  pole: { x: -3.48, z: 0.45, top: 8.95 },
+  sign: { x: -6.95, top: 5.42, px: 0.07, gap: 0.24 },
 };
 
-// Width in art pixels of a line of sign lettering
+// Width in sign pixels of a line of sign lettering
 function signWidth(str) {
   let w = 0;
   for (const ch of str) w += SIGN_GLYPHS[ch] ? SIGN_GLYPHS[ch][0].length + 1 : 4;
   return w - 1;
 }
 
-// Paints one line of sign lettering centred on cx, with a drop shadow.
-function paintSign(str, cx, y, col, shadow) {
-  for (const pass of [1, 0]) {
-    let x = Math.round(cx - signWidth(str) / 2) + pass;
-    for (const ch of str) {
-      const glyph = SIGN_GLYPHS[ch];
-      if (!glyph) { x += 4; continue; }
-      for (let r = 0; r < glyph.length; r++) {
-        for (let c = 0; c < glyph[r].length; c++) {
-          if (glyph[r][c] === '1') PX.px(x + c, y + r + pass, pass ? shadow : col);
-        }
-      }
-      x += glyph[0].length + 1;
-    }
-  }
-}
-
-// Works out where every part of the school goes. Widths stretch with the
-// screen, heights are fixed so the doors always suit a 30px adult. The main
-// entrance is centred on the middle of the screen (wx = 0.5) and every
-// threshold sits at B = PX.HOR + 3 (see the School contract in the guide).
+// Where the ends of the school appear on screen, in art pixels. (The 2D
+// town used this to know which of its columns can be seen; kept for it.)
 function schoolLayout() {
-  const u = PX.W / 640;
-  const v = Math.max(1, Math.min(1.5, PX.HOR / 97));   // taller screens get taller upper floors
-  const cx = Math.round(PX.W / 2);
-  const B = PX.HOR + 3;
-  const X = n => cx + Math.round(n * u);
-  // Height above the ground → art y. Everything up to the canopy is fixed.
-  const Y = n => B - (n <= 45 ? n : 45 + Math.round((n - 45) * v));
-  const towerHalf = Math.max(29, Math.round(29 * u));
-  const midR = X(108);
-  const midDoorX = Math.round((cx + towerHalf + midR) / 2) - 9;
-  // The flagpole stands at the back of the sidewalk, against the wall.
-  // Everybody who walks past is in front of it, so it can live in the
-  // school layer and still be in the right depth order. Its place is just
-  // left of the tower, by the main entrance; on a narrow screen the sign
-  // needs that wall, so the pole moves to the far end of the sign wall.
-  const massL = X(-152);
-  const roomy = (cx - towerHalf) - massL >= signWidth('MIDDLE SCHOOL') + 22;
+  const S = SCHOOL3.sections;
+  const ax = x => G3.ready ? G3.artAt(0.5 + x / G3.GW, 0, 0).x : Math.round((0.5 + x / G3.GW) * PX.W);
+  const base = G3.ready ? G3.artAt(0.5, 0, 0) : { x: PX.W >> 1, y: PX.HOR + 3 };
   return {
-    cx, B, X, Y,
-    wingL: X(-258),          // far-left brick wing
-    massL,                   // left brick mass with the sign
-    towerL: cx - towerHalf,  // glass tower over the main entrance
-    towerR: cx + towerHalf,
-    midR,                    // centre brick section ends, sandstone wing begins
-    midDoorX,                // left edge of the second entrance
-    wingR: X(202),           // sandstone wing ends
-    canopyR: X(216),         // the canopy runs a little past the building
-    poleX: roomy ? cx - towerHalf - 8 : massL - 4,
-    poleByTower: roomy,
-    poleTop: Y(89),
+    cx: base.x, B: base.y,
+    wingL: ax(S.wingL.x0), massL: ax(S.mass.x0), towerL: ax(S.tower.x0), towerR: ax(S.tower.x1),
+    midR: ax(S.mid.x1), wingR: ax(S.stone.x1), canopyR: ax(SCHOOL3.canopy.x1), poleX: ax(SCHOOL3.pole.x),
   };
 }
 
-// Evenly spaced x positions for a row of 11px windows between x0 and x1
-function windowRow(x0, x1) {
-  const n = Math.max(1, Math.floor((x1 - x0 - 11) / 13.5) + 1);
-  const pitch = n > 1 ? (x1 - x0 - 11) / (n - 1) : 0;
-  const xs = [];
-  for (let i = 0; i < n; i++) xs.push(Math.round(x0 + i * pitch));
-  return xs;
-}
-
-// The lit-up version of every window and door, collected while the school
-// is painted and replayed into the night-lights layer.
-let SCHOOL_LIGHTS = [];
-
-// A brick wall: flat colour flecked with darker and lighter bricks laid in
-// running bond, a light left edge and a shaded right edge.
-function paintBrick(x, y, w, h, base, dark, light) {
-  PX.rect(x, y, w, h, base);
-  for (let r = 0; r * 2 < h; r++) {
-    const yy = y + r * 2;
-    for (let bx = x - (r % 2) * 2; bx < x + w; bx += 4) {
-      const k = sceneHash(bx * 3 + 11, yy);
-      if (k > 0.14 && k < 0.90) continue;
-      const x0 = Math.max(x, bx), x1 = Math.min(x + w, bx + 3);
-      if (x1 > x0) PX.rect(x0, yy, x1 - x0, 1, k <= 0.14 ? dark : light);
-    }
+// One window on the front wall (z = 0): a frame standing proud of the
+// wall, glazing bars, panes of glass set back inside it and a sill.
+// o: { cols, rows, frame, sill, lit }. Lit windows go in the list that
+// glows at night.
+function schoolWindow(L, cx, y0, w, h, o) {
+  const f = 0.08, bar = 0.05, x0 = cx - w / 2, x1 = cx + w / 2, y1 = y0 + h;
+  const frame = o.frame || PAL.white, cols = o.cols || 2, rows = o.rows || 2;
+  sceneBox(L.trim, x0, x1, y0, y0 + f, 0, 0.12, frame);
+  sceneBox(L.trim, x0, x1, y1 - f, y1, 0, 0.12, frame);
+  sceneBox(L.trim, x0, x0 + f, y0 + f, y1 - f, 0, 0.12, frame);
+  sceneBox(L.trim, x1 - f, x1, y0 + f, y1 - f, 0, 0.12, frame);
+  const pw = (w - 2 * f - (cols - 1) * bar) / cols, ph = (h - 2 * f - (rows - 1) * bar) / rows;
+  for (let c = 1; c < cols; c++) {
+    const bx = x0 + f + c * pw + (c - 1) * bar;
+    sceneBox(L.trim, bx, bx + bar, y0 + f, y1 - f, 0, 0.09, frame);
   }
-  PX.rect(x, y, 1, h, light);
-  PX.rect(x + w - 2, y, 2, h, dark);
-}
-
-// A sandstone wall: big blocks with shadowed joints.
-function paintStone(x, y, w, h, base, dark, light) {
-  PX.rect(x, y, w, h, base);
-  for (let r = 0; r * 8 < h; r++) {
-    const yy = y + r * 8;
-    PX.rect(x, yy, w, 1, light);
-    if (r > 0) PX.rect(x, yy - 1, w, 1, dark);
-    for (let bx = x + (r % 2) * 7 + 6; bx < x + w - 1; bx += 14) {
-      PX.rect(bx, yy + 1, 1, Math.min(6, y + h - yy - 1), dark);
-    }
+  for (let r = 1; r < rows; r++) {
+    const by = y0 + f + r * ph + (r - 1) * bar;
+    sceneBox(L.trim, x0 + f, x1 - f, by, by + bar, 0, 0.085, frame);
   }
-  PX.rect(x, y, 1, h, light);
-  PX.rect(x + w - 2, y, 2, h, dark);
-}
-
-// Slate-blue parapet capping a wall whose top is at y
-function paintParapet(x, y, w) {
-  PX.rect(x - 1, y - 4, w + 2, 4, PAL.sl2);
-  PX.rect(x - 1, y - 4, w + 2, 1, PAL.sl1);
-  PX.rect(x - 1, y - 1, w + 2, 1, PAL.sl3);
-  PX.rect(x + w - 1, y - 3, 2, 2, PAL.sl3);
-  PX.alpha(0.22, () => PX.rect(x, y, w, 1, PAL.ink));     // its shadow on the wall
-}
-
-// One classroom window. Most have their lights on at night, and a lit
-// ground-floor window (spillTo = the sidewalk's top row) throws a soft
-// patch of light onto the sidewalk below it.
-function paintWindow(x, y, sill, spillTo) {
-  PX.spr('schoolWin', x, y, { pal: { s: sill } });
-  if (sceneHash(x * 7 + 3, y * 13 + 1) < 0.72) {
-    SCHOOL_LIGHTS.push(() => {
-      PX.spr('schoolWinLit', x, y);
-      if (spillTo !== undefined) paintLightSpill(x, 11, spillTo, 6, 0.12);
-    });
+  const glass = o.lit ? L.lit : L.dark;
+  for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) {
+    const gx = x0 + f + c * (pw + bar), gy = y0 + f + r * (ph + bar);
+    // the sky catches the top-left of the glass
+    const col = (r === rows - 1 && c === 0) ? PAL.sk2 : (r === 0 && c === cols - 1) ? PAL.sk4 : PAL.sk3;
+    sceneBox(glass, gx, gx + pw, gy, gy + ph, 0, 0.04, col);
   }
+  if (o.sill) sceneBox(L.trim, x0 - 0.06, x1 + 0.06, y0 - 0.09, y0, 0, 0.2, o.sill);
 }
 
-// Warm light lying on the ground in front of a lit window or door: a
-// see-through patch that widens a little as it comes forward.
-function paintLightSpill(x, w, y, depth, strength) {
-  PX.alpha(strength, () => {
-    for (let r = 0; r < depth; r++) PX.rect(x - r, y + r, w + r * 2, 1, PAL.ye1);
-  });
+// A classroom window; about three in four have their lights on at night.
+function classWindow(L, cx, y0, sill) {
+  const lit = sceneHash(Math.round(cx * 8) + 3, Math.round(y0 * 8) * 13 + 1) < 0.72;
+  schoolWindow(L, cx, y0, 0.8, 1.0, { sill, lit });
 }
 
-// A tall strip of tower glass: two panes wide, crossed by transoms.
-function paintTallGlass(x, y, h) {
-  const w = 11;
-  const glass = (top, mid, low, bar, tr) => {
-    for (let r = 0; r < h - 2; r++) {
-      const f = r / (h - 2);
-      const col = f < 0.3 ? top : f < 0.7 ? mid : low;
-      PX.rect(x + 1, y + 1 + r, 4, 1, col);
-      PX.rect(x + 6, y + 1 + r, 4, 1, col);
-    }
-    PX.rect(x + 5, y + 1, 1, h - 2, bar);
-    for (let r = 8; r < h - 3; r += 8) PX.rect(x + 1, y + r, w - 2, 1, tr);
+// One section of the building: a box of wall from the ground to sec.h and
+// back to SCHOOL3.back, with a recess cut in the front for each opening
+// { x0, x1, y1, depth } (doorways), a gravel roof, a slate parapet all
+// round and a plinth along the foot of the wall.
+function schoolSection(L, sec, openings) {
+  const back = SCHOOL3.back, wall = L.walls[sec.tex], P = SCHOOL3.parapet;
+  let x = sec.x0;
+  // Faces where two pieces of the same wall meet are left out (1 = +x,
+  // 2 = -x); the sides of a recess are added back as single faces.
+  const solid = (a, b) => {
+    if (b - a < 0.001) return;
+    wall.push([a, b, 0, sec.h, back, 0, (b < sec.x1 - 0.001 ? 1 : 0) | (a > sec.x0 + 0.001 ? 2 : 0)]);
+    sceneBox(L.trim, a, b, 0, 0.22, 0, 0.05, sec.plinth);
   };
-  PX.rect(x, y, w, h, PAL.sl3);
-  glass(PAL.sk2, PAL.sk3, PAL.sl1, PAL.g1, PAL.sl2);
-  // Sky glints running down the glass
-  for (let r = 2; r < h - 4; r += 8) {
-    PX.px(x + 3, y + r, PAL.sk1); PX.px(x + 2, y + r + 1, PAL.sk1); PX.px(x + 1, y + r + 2, PAL.sk1);
-    PX.px(x + 9, y + r + 2, PAL.sk1); PX.px(x + 8, y + r + 3, PAL.sk1); PX.px(x + 7, y + r + 4, PAL.sk1);
+  for (const o of (openings || [])) {
+    solid(x, o.x0);
+    wall.push([o.x0, o.x1, o.y1, sec.h, back, 0, 3]);            // over the opening
+    wall.push([o.x0, o.x1, 0, o.y1, back, -o.depth, 3]);         // behind it
+    wall.push([o.x0 - 0.05, o.x0, 0, o.y1, -o.depth, 0, 62]);    // its left side (+x face only)
+    wall.push([o.x1, o.x1 + 0.05, 0, o.y1, -o.depth, 0, 61]);    // its right side (-x face only)
+    x = o.x1;
   }
-  SCHOOL_LIGHTS.push(() => glass(PAL.ye1, PAL.ye1, PAL.ye2, PAL.ye4, PAL.ye3));
+  solid(x, sec.x1);
+  L.walls.roof_flat.push([sec.x0 + 0.25, sec.x1 - 0.25, sec.h, sec.h + 0.04, back + 0.25, -0.25]);
+  // Parapet: slate blue with a lighter cap, a texel proud of the wall
+  const T = G3.T, y0 = sec.h, y1 = sec.h + P - 0.07, y2 = sec.h + P;
+  const rim = (a, b, z0, z1) => {
+    sceneBox(L.trim, a, b, y0, y1, z0, z1, PAL.sl2);
+    sceneBox(L.trim, a - 0.02, b + 0.02, y1, y2, z0 - 0.02, z1 + 0.02, PAL.sl1);
+  };
+  rim(sec.x0 - T, sec.x1 + T, -0.3, T);
+  rim(sec.x0 - T, sec.x1 + T, back - T, back + 0.3);
+  rim(sec.x0 - T, sec.x0 + 0.3, back + 0.3, -0.3);
+  rim(sec.x1 - 0.3, sec.x1 + T, back + 0.3, -0.3);
 }
 
-// A pair of wooden entrance doors with glass slits under a transom window.
-// (x, B) is the bottom-left corner; w should be even. h includes the frame.
-function paintDoor(x, B, w, h) {
-  const y = B - h;
-  const lw = (w - 2) / 2;                      // one door leaf
-  PX.rect(x, y, w, h, PAL.g5);                 // frame
-  PX.rect(x + 1, y + 1, w - 2, 4, PAL.sk3);    // transom glass
-  PX.rect(x + 1, y + 1, w - 2, 1, PAL.sk2);
-  PX.rect(x + w / 2 - 1, y + 1, 1, 4, PAL.g5);
+// A pair of wooden doors with glass slits under a transom window, set
+// back in a recess { x0, x1, y1, depth } in the wall.
+function schoolSideDoor(L, o) {
+  const zb = -o.depth, w = o.x1 - o.x0;
+  sceneBox(L.trim, o.x0, o.x1, 0, o.y1, zb, zb + 0.04, PAL.g5);                    // frame
+  sceneBox(L.trim, o.x0, o.x1, 0, 0.035, zb, 0, PAL.g2);                           // threshold
+  sceneBox(L.lit, o.x0 + 0.1, o.x1 - 0.1, o.y1 - 0.45, o.y1 - 0.1, zb + 0.04, zb + 0.07, PAL.sk3);   // transom
+  const lw = (w - 0.2) / 2, top = o.y1 - 0.55;
   for (let k = 0; k < 2; k++) {
-    const lx = x + 1 + k * lw;
-    PX.rect(lx, y + 6, lw, h - 6, PAL.wo3);
-    PX.rect(lx, y + 6, lw, 1, PAL.wo2);                           // light catches the top rail
-    PX.rect(lx + (k === 0 ? 0 : lw - 1), y + 6, 1, h - 6, PAL.wo2);
-    PX.rect(lx + Math.floor((lw - 3) / 2), y + 9, 3, 14, PAL.g5); // glass slit and its frame
-    PX.rect(lx + Math.floor((lw - 3) / 2) + 1, y + 10, 1, 12, PAL.sk3);
-    PX.rect(lx + Math.floor((lw - 3) / 2) + 1, y + 10, 1, 3, PAL.sk2);
-    PX.rect(lx, B - 3, lw, 3, PAL.wo4);                           // kick plate
-    PX.rect(lx + (k === 0 ? lw - 2 : 1), y + 25, 1, 3, PAL.ye2);  // handle
-  }
-  PX.rect(x + w / 2 - 1, y + 6, 1, h - 6, PAL.wo4);               // where the doors meet
-  PX.rect(x + w / 2, y + 6, 1, h - 6, PAL.wo4);
-  SCHOOL_LIGHTS.push(() => {
-    PX.rect(x + 1, y + 1, w - 2, 4, PAL.ye1);
-    PX.rect(x + w / 2 - 1, y + 1, 1, 4, PAL.ye4);
-    for (let k = 0; k < 2; k++) {
-      PX.rect(x + 1 + k * lw + Math.floor((lw - 3) / 2) + 1, y + 10, 1, 12, PAL.ye1);
-    }
-    paintLightSpill(x + 1, w - 2, B, 7, 0.2);
-  });
-}
-
-// A white canopy column from yTop down to the sidewalk
-function paintColumn(x, yTop, B) {
-  PX.rect(x, yTop, 3, B - yTop, PAL.white);
-  PX.rect(x + 2, yTop, 1, B - yTop, PAL.g2);
-  PX.rect(x - 1, yTop, 5, 1, PAL.g2);
-  PX.rect(x - 1, B - 2, 5, 2, PAL.g1);
-  PX.rect(x + 2, B - 2, 2, 2, PAL.g3);
-}
-
-// The white picket fence along the back of the lawn. It is painted before
-// the building, so the school stands in front of it. It is kept low so the
-// cars on the town's front street can be seen driving along behind it.
-const FENCE_H = 7;
-function paintFence(B) {
-  const w = PX.W;
-  PX.rect(0, B - 5, w, 1, PAL.g1);         // rails behind the pickets
-  PX.rect(0, B - 4, w, 1, PAL.g3);
-  PX.rect(0, B - 2, w, 1, PAL.g1);
-  PX.rect(0, B - 1, w, 1, PAL.g3);
-  for (let x = 1; x < w; x += 5) {
-    PX.rect(x, B - FENCE_H + 1, 3, FENCE_H - 1, PAL.white);
-    PX.rect(x + 2, B - FENCE_H + 1, 1, FENCE_H - 1, PAL.g2);
-    PX.px(x + 1, B - FENCE_H, PAL.white);  // pointed top
+    const lx = o.x0 + 0.1 + k * lw, mid = lx + lw / 2;
+    sceneBox(L.trim, lx + 0.015, lx + lw - 0.015, 0.035, top, zb + 0.04, zb + 0.1, PAL.wo3);
+    sceneBox(L.trim, lx + 0.015, lx + lw - 0.015, 0.035, 0.3, zb + 0.1, zb + 0.115, PAL.wo4);   // kick plate
+    sceneBox(L.trim, mid - 0.11, mid + 0.11, 0.8, top - 0.15, zb + 0.1, zb + 0.12, PAL.g5);     // slit frame
+    sceneBox(L.lit, mid - 0.06, mid + 0.06, 0.85, top - 0.2, zb + 0.12, zb + 0.13, PAL.sk3);
+    const hx = k === 0 ? lx + lw - 0.12 : lx + 0.06;
+    sceneBox(L.trim, hx, hx + 0.06, 0.95, 1.15, zb + 0.1, zb + 0.16, PAL.ye2);                  // handle
   }
 }
 
-// The sidewalk along the front of the building, PX.HOR + 3 .. PX.HOR + 12
-function paintSidewalk(B) {
-  const w = PX.W;
-  PX.rect(0, B, w, 10, PAL.g1);
-  PX.rect(0, B, w, 1, PAL.white);
-  PX.rect(0, B + 8, w, 1, PAL.g2);
-  PX.rect(0, B + 9, w, 1, PAL.g3);
-  for (let x = (PX.W >> 1) % 22 - 11; x < w; x += 22) PX.rect(x, B + 1, 1, 8, PAL.g2);   // expansion joints
-  for (let i = 0; i < w / 6; i++) {                                                     // grit
-    PX.px(Math.floor(sceneHash(i, 91) * w), B + 2 + Math.floor(sceneHash(i, 17) * 6), PAL.g2);
-  }
-  PX.alpha(0.3, () => PX.rect(0, B + 10, w, 1, PAL.ink));   // the kerb's shadow on the grass
+// A square white column from the ground up to y1
+function schoolColumn(L, x, z, y1, w) {
+  const h = w / 2;
+  sceneBox(L.trim, x - h, x + h, 0, y1, z - h, z + h, PAL.white);
+  sceneBox(L.trim, x - h - 0.05, x + h + 0.05, 0, 0.16, z - h - 0.05, z + h + 0.05, PAL.g2);
+  sceneBox(L.trim, x - h - 0.05, x + h + 0.05, y1 - 0.12, y1, z - h - 0.05, z + h + 0.05, PAL.g1);
 }
 
-// Paints the whole school (and the fence and sidewalk) into its layer.
-// Left to right: far-left brick wing with a side door, the taller brick mass
-// carrying the sign, the pale glass tower with its penthouse over the main
-// entrance, a lower brick section, and the sandstone wing; a long white
-// canopy on columns runs from the tower to past the end of the building.
-function paintSchool(L) {
-  const { B, Y, cx } = L;
-  SCHOOL_LIGHTS = [];
-  paintFence(B);
-  paintSidewalk(B);
-
-  // ── Far-left wing ──
-  const wingW = L.massL - L.wingL;
-  paintBrick(L.wingL, Y(64), wingW, B - Y(64), PAL.br3, PAL.br4, PAL.br2);
-  paintParapet(L.wingL, Y(64), wingW);
-  // Recessed side-door bay
-  PX.rect(L.wingL + 2, Y(46), 26, 46, PAL.br4);
-  PX.rect(L.wingL + 2, Y(46), 26, 2, PAL.br5);
-  PX.rect(L.wingL + 2, Y(46), 1, 46, PAL.br5);
-  paintDoor(L.wingL + 7, B, 16, 35);
-  PX.rect(L.wingL + 13, Y(42), 4, 1, PAL.g4);         // lamp over the door
-  PX.rect(L.wingL + 14, Y(41), 2, 2, PAL.ye1);
-  for (const wx of windowRow(L.wingL + 34, L.massL - 6)) {
-    paintWindow(wx, Y(60), PAL.br1);
-    paintWindow(wx, Y(30), PAL.br1, B);
-  }
-
-  // ── Centre brick section (behind the canopy) ──
-  const midW = L.midR - L.towerR;
-  paintBrick(L.towerR, Y(62), midW, B - Y(62), PAL.br2, PAL.br3, PAL.br1);
-  paintParapet(L.towerR, Y(62), midW);
-  const midDoorX = L.midDoorX;
-  for (const wx of windowRow(L.towerR + 9, L.midR - 9)) paintWindow(wx, Y(60), PAL.br1);
-  paintWindow(midDoorX - 25, Y(30), PAL.br1, B);
-  paintWindow(midDoorX + 30, Y(30), PAL.br1, B);
-  paintDoor(midDoorX, B, 18, 36);
-
-  // ── Sandstone wing ──
-  const stoneW = L.wingR - L.midR;
-  paintStone(L.midR, Y(66), stoneW, B - Y(66), PAL.ta2, PAL.ta3, PAL.ta1);
-  paintParapet(L.midR, Y(66), stoneW);
-  // End-door bay in darker stone
-  PX.rect(L.wingR - 30, Y(40), 28, 40, PAL.ta3);
-  PX.rect(L.wingR - 30, Y(40), 1, 40, PAL.ta4);
-  paintDoor(L.wingR - 24, B, 16, 35);
-  const lowerXs = windowRow(L.midR + 8, L.wingR - 43);
-  const pitch = lowerXs.length > 1 ? lowerXs[1] - lowerXs[0] : 14;
-  for (const wx of lowerXs) paintWindow(wx, Y(30), PAL.ta1, B);
-  for (let wx = lowerXs[0]; wx + 11 <= L.wingR - 4; wx += pitch) paintWindow(wx, Y(62), PAL.ta1);
-
-  // ── Left brick mass with the sign ──
-  const massW = L.towerL - L.massL;
-  paintBrick(L.massL, Y(68), massW, B - Y(68), PAL.br2, PAL.br3, PAL.br1);
-  paintParapet(L.massL, Y(68), massW);
-  // Recessed bay in the middle of the ground floor
-  const bayW = 38, bayX = L.massL + Math.round((massW - bayW) / 2);
-  PX.rect(bayX, Y(36), bayW, 36, PAL.br3);
-  PX.rect(bayX, Y(36), bayW, 2, PAL.br4);
-  PX.rect(bayX, Y(36), 1, 36, PAL.br4);
-  paintWindow(bayX + 6, Y(30), PAL.br2, B);
-  paintWindow(bayX + 21, Y(30), PAL.br2, B);
-  if (bayX - L.massL > 34) {
-    for (const wx of windowRow(L.massL + 9, bayX - 9)) paintWindow(wx, Y(30), PAL.br1, B);
-    // (stopping short of the tower leaves room for the flagpole)
-    for (const wx of windowRow(bayX + bayW + 6, L.towerL - (L.poleByTower ? 11 : 8))) paintWindow(wx, Y(30), PAL.br1, B);
-  }
-  const signX = L.massL + Math.round((massW - (L.poleByTower ? 6 : 0)) / 2);
-  paintSign('ROBERT ADAMS', signX, Y(64), PAL.white, PAL.br4);
-  paintSign('MIDDLE SCHOOL', signX, Y(53), PAL.white, PAL.br4);
-
-  // ── Glass tower ──
-  const towerW = L.towerR - L.towerL;
-  // (kept only a little taller than the wings, so the sun can ride over it)
-  const towerTop = Y(76);
-  PX.rect(L.towerL, towerTop, towerW, B - towerTop, PAL.g1);
-  for (let y = towerTop + 10; y < Y(48); y += 11) PX.rect(L.towerL, y, towerW, 1, PAL.g2);   // cladding joints
-  PX.rect(L.towerL, towerTop, 1, B - towerTop, PAL.white);
-  PX.rect(L.towerR - 3, towerTop, 3, B - towerTop, PAL.g2);
-  paintParapet(L.towerL, towerTop, towerW);
-  // A low roof-light on top
-  PX.rect(L.towerL + 17, towerTop - 7, towerW - 34, 3, PAL.sl2);
-  PX.rect(L.towerL + 17, towerTop - 7, towerW - 34, 1, PAL.sl1);
-  PX.rect(L.towerR - 19, towerTop - 6, 2, 2, PAL.sl3);
-  // Three tall strips of glass
-  const glassX = L.towerL + Math.round((towerW - 45) / 2);
-  for (let i = 0; i < 3; i++) paintTallGlass(glassX + i * 17, Y(73), Y(49) - Y(73));
-  // The tower throws a shadow onto the lower wall to its right
-  PX.alpha(0.2, () => PX.rect(L.towerR, Y(62), 5, Y(45) - Y(62), PAL.ink));
-
-  // ── Main entrance: a glass storefront at the foot of the tower ──
-  PX.rect(L.towerL + 3, Y(37), towerW - 6, 37, PAL.g5);
-  for (const sx of [L.towerL + 4, L.towerR - 8]) {       // side lights
-    PX.rect(sx, Y(36), 4, 35, PAL.sk3);
-    PX.rect(sx, Y(36), 1, 12, PAL.sk2);
-    PX.rect(sx, Y(8), 4, 1, PAL.g5);
-    SCHOOL_LIGHTS.push(() => PX.rect(sx, Y(36), 4, 28, PAL.ye1));
-  }
-  paintDoor(cx - 21, B, 20, 36);
-  paintDoor(cx + 1, B, 20, 36);
-  // At night the sign is lit and light spills out of the entrance onto the sidewalk
-  SCHOOL_LIGHTS.push(() => {
-    paintSign('ROBERT ADAMS', signX, Y(64), PAL.cream, PAL.br4);
-    paintSign('MIDDLE SCHOOL', signX, Y(53), PAL.cream, PAL.br4);
-    paintLightSpill(cx - 24, 48, B, 9, 0.16);          // on top of the two doors' own patches
-  });
-
-  // ── Canopy ──
-  const canL = L.towerL - 3, canW = L.canopyR - canL;
-  PX.alpha(0.24, () => PX.rect(L.towerL, Y(38), L.wingR - L.towerL, 3, PAL.ink));   // shade under it
-  PX.rect(canL, Y(45), canW, 7, PAL.g1);
-  PX.rect(canL, Y(45), canW, 2, PAL.white);
-  PX.rect(canL, Y(40), canW, 1, PAL.g2);
-  PX.rect(canL, Y(39), canW, 1, PAL.g3);
-  PX.rect(canL + canW - 1, Y(44), 1, 6, PAL.g2);
-  // Columns, placed in the gaps between doors and windows
-  const cols = [L.towerL - 2, L.towerR - 1, midDoorX - 6, midDoorX + 21, L.midR - 2, L.canopyR - 5];
-  for (let i = 1; i < lowerXs.length; i += 2) cols.push(lowerXs[i] + 11 + Math.max(0, Math.floor((pitch - 14) / 2)));
-  for (const colX of cols) paintColumn(colX, Y(38), B);
-
-  // ── Flagpole by the main entrance (the flag itself is animated) ──
-  const poleBase = B + 1;
-  PX.alpha(0.2, () => PX.rect(L.poleX + 2, Y(64), 1, poleBase - Y(64) - 2, PAL.ink));   // its shadow on the wall
-  PX.rect(L.poleX, L.poleTop, 2, poleBase - L.poleTop, PAL.g2);
-  PX.rect(L.poleX, L.poleTop, 1, poleBase - L.poleTop, PAL.white);
-  PX.rect(L.poleX + 1, Y(72), 1, poleBase - Y(72), PAL.g3);   // darker where it stands in front of the wall
-  PX.rect(L.poleX - 1, L.poleTop - 2, 4, 2, PAL.ye2);         // gold ball on top
-  PX.rect(L.poleX, L.poleTop - 3, 2, 1, PAL.ye1);
-  PX.rect(L.poleX - 2, poleBase - 2, 6, 3, PAL.g3);           // concrete footing
-  PX.rect(L.poleX - 2, poleBase - 2, 6, 1, PAL.g2);
-}
-
-// Paints only the glowing glass, to be laid over the night-tinted school.
-function paintSchoolLights() {
-  for (const paint of SCHOOL_LIGHTS) paint();
-}
-
-// The US flag, waving. The flag is painted flat once (in sunlight and in
-// shade, side by side); each frame every column rides a travelling ripple,
-// and the falling side of each ripple is drawn from the shaded copy.
-const FLAG_W = 22, FLAG_H = 13;
-
-function paintFlag() {
-  for (let shade = 0; shade < 2; shade++) {
-    for (let i = 0; i < FLAG_W; i++) {
-      for (let r = 0; r < FLAG_H; r++) {
-        let col;
-        if (i < 9 && r < 7) {
-          col = (i % 2 === 1 && r % 2 === 1) ? PAL.white : (shade ? PAL.bl4 : PAL.bl3);   // stars on blue
-        } else {
-          col = r % 2 === 0 ? (shade ? PAL.re3 : PAL.re2) : (shade ? PAL.g2 : PAL.white);
-        }
-        PX.px(shade * FLAG_W + i, r, col);
+// A line of sign lettering made of little boxes, centred on cx with its
+// top at `top`, standing out from z0 to z1.
+function schoolLettering(list, str, cx, top, s, z0, z1, col) {
+  let x = cx - signWidth(str) * s / 2;
+  for (const ch of str) {
+    const glyph = SIGN_GLYPHS[ch];
+    if (!glyph) { x += 4 * s; continue; }
+    for (let r = 0; r < glyph.length; r++) {
+      const row = glyph[r];
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] !== '1') continue;
+        let e = c;
+        while (e + 1 < row.length && row[e + 1] === '1') e++;
+        sceneBox(list, x + c * s, x + (e + 1) * s, top - (r + 1) * s, top - r * s, z0, z1, col);
+        c = e;
       }
     }
+    x += (glyph[0].length + 1) * s;
   }
 }
 
-// (x, y) is the top corner of the flag where it meets the pole. It flies
-// out to the left, over the roof, so column i is drawn i pixels left of x.
-function drawSchoolFlag(x, y, tick, gust) {
-  const flat = sceneLayer('flag', FLAG_W * 2, FLAG_H, '', paintFlag);
+// A rooftop air-handling unit
+function schoolRoofUnit(L, x, y, z, w, d) {
+  sceneBox(L.trim, x - w / 2, x + w / 2, y, y + 0.42, z - d / 2, z + d / 2, PAL.g2);
+  sceneBox(L.trim, x - w / 2 - 0.03, x + w / 2 + 0.03, y + 0.42, y + 0.5, z - d / 2 - 0.03, z + d / 2 + 0.03, PAL.g3);
+  sceneBox(L.trim, x - w / 2 + 0.1, x + w / 2 - 0.1, y + 0.12, y + 0.3, z + d / 2, z + d / 2 + 0.02, PAL.g4);
+}
+
+// The flag: one thin strip of boxes per column, so it can ripple by
+// moving whole columns. Column 0 is at the pole; the flag flies out to
+// the left, over the roof.
+const FLAG_COL_W = 0.16, FLAG_ROW_H = 0.085;
+function buildSchoolFlag() {
+  const F = FLAG_ART, flag = new THREE.Group();
+  flag.userData.cols = [];
+  for (let i = 0; i < F.cols; i++) {
+    const list = [];
+    for (let r = 0; r < F.rows; r++) {
+      const canton = i < F.cantonCols && r < F.cantonRows;
+      const col = canton ? F.blue : (r % 2 === 0 ? F.red : F.white);
+      sceneBox(list, -FLAG_COL_W / 2, FLAG_COL_W / 2, -(r + 1) * FLAG_ROW_H, -r * FLAG_ROW_H, -0.03, 0.03, col);
+      if (canton && r % 2 === 1 && i % 2 === 1 - (r >> 1) % 2 && i > 0) {       // stars
+        sceneBox(list, -FLAG_COL_W / 4, FLAG_COL_W / 4, -(r + 1) * FLAG_ROW_H, -r * FLAG_ROW_H, -0.038, 0.038, F.star);
+      }
+    }
+    const m = sceneColourMesh(list);
+    m.position.x = -(i + 0.5) * FLAG_COL_W;
+    flag.add(m);
+    flag.userData.cols.push(m);
+  }
+  return flag;
+}
+
+// Ripples the flag: a wave travels out from the pole, each column riding
+// it up and down (and a little toward and away from us) in texel steps.
+function poseSchoolFlag(flag, tick, gust) {
+  const cols = flag.userData.cols, n = cols.length;
   const amp = 1.2 + Math.min(1, Math.abs(gust)) * 0.8;
-  for (let i = 0; i < FLAG_W; i++) {
-    const ph = i * 0.5 - tick * 0.13;
-    const dy = Math.round(Math.sin(ph) * amp * (i / (FLAG_W - 1)));
-    const shade = Math.cos(ph) < -0.3 && i > 2;
-    PX.c.drawImage(flat, (shade ? FLAG_W : 0) + i, 0, 1, FLAG_H, x - i, y + dy, 1, FLAG_H);
+  for (let i = 0; i < n; i++) {
+    const ph = i * 0.9 - tick * 0.13, far = i / (n - 1);
+    cols[i].position.y = Math.round(Math.sin(ph) * amp * far) * G3.T * 0.75;
+    cols[i].position.z = Math.round(Math.cos(ph) * 1.6 * far) * G3.T * 0.75;
   }
 }
 
-// Draws the school: the pre-painted building, the waving flag, and at
-// night (or under storm clouds) the warm light in its windows.
+// The white picket fence along the back of the lawn, either side of the
+// school: square pickets with pointed tops on two rails, and a thicker
+// post every few blocks. Kept low so the town shows over it.
+function schoolFence(list, x0, x1) {
+  const T = G3.T, z = -0.2;
+  sceneBox(list, x0, x1, 0.18, 0.25, z - 0.07, z - 0.02, PAL.g1);
+  sceneBox(list, x0, x1, 0.48, 0.55, z - 0.07, z - 0.02, PAL.g1);
+  for (let x = x0 + T; x + 3 * T <= x1; x += 5 * T) {
+    sceneBox(list, x, x + 3 * T, 0, 0.7, z - 0.02, z + 0.04, PAL.white);
+    sceneBox(list, x + T, x + 2 * T, 0.7, 0.77, z - 0.02, z + 0.04, PAL.white);
+  }
+  for (let x = x0; x <= x1 + 0.001; x += (x1 - x0) / Math.max(1, Math.round((x1 - x0) / 2.5))) {
+    sceneBox(list, x - 0.09, x + 0.09, 0, 0.85, z - 0.11, z + 0.07, PAL.white);
+    sceneBox(list, x - 0.12, x + 0.12, 0.85, 0.92, z - 0.14, z + 0.1, PAL.g1);
+  }
+}
+
+// Builds the whole school as a Group standing on y = 0 with its front wall
+// at z = 0. forCard leaves out the long sidewalk and the fence (the I SPY
+// card shows just the building).
+function buildSchool(forCard) {
+  const S = SCHOOL3, X = S.sections, M = sceneMats();
+  const L = {
+    walls: { brick: [], brick_dark: [], sandstone: [], panel_white: [], roof_flat: [], pavement: [], sign_board: [] },
+    trim: [], lit: [], dark: [], letters: [], hall: [],
+  };
+  const school = new THREE.Group();
+
+  // ── Sidewalk, a hair above the lawn, and the paving under the portico ──
+  const sw = S.sidewalk, swx0 = forCard ? X.wingL.x0 - 1 : sw.x0, swx1 = forCard ? S.canopy.x1 + 0.5 : sw.x1;
+  L.walls.pavement.push([swx0, swx1, -0.3, sw.y, sw.z0, sw.z1]);
+  L.walls.pavement.push([S.apron.x0, S.apron.x1, -0.3, sw.y, sw.z1, S.apron.z1]);
+  sceneBox(L.trim, swx0, S.apron.x0, -0.3, sw.y + 0.012, sw.z1 - 0.07, sw.z1, PAL.g2);       // kerb
+  sceneBox(L.trim, S.apron.x1, swx1, -0.3, sw.y + 0.012, sw.z1 - 0.07, sw.z1, PAL.g2);
+  sceneBox(L.trim, S.apron.x0, S.apron.x1, -0.3, sw.y + 0.012, S.apron.z1 - 0.07, S.apron.z1, PAL.g2);
+
+  // ── Far-left wing: side door in a recess, two rows of windows ──
+  const doorL = { x0: X.wingL.x0 + 0.6, x1: X.wingL.x0 + 2.1, y1: 2.5, depth: 0.5 };
+  schoolSection(L, X.wingL, [doorL]);
+  schoolSideDoor(L, doorL);
+  sceneBox(L.trim, doorL.x0 + 0.6, doorL.x1 - 0.6, 2.72, 2.8, 0, 0.14, PAL.g4);      // lamp over the door
+  sceneBox(L.lit, doorL.x0 + 0.66, doorL.x1 - 0.66, 2.62, 2.72, 0.02, 0.12, PAL.ye1);
+  classWindow(L, (doorL.x0 + doorL.x1) / 2, 3.25, PAL.br1);
+  for (const cx of [-12.55, -11.35]) {
+    classWindow(L, cx, 1.15, PAL.br1);
+    classWindow(L, cx, 3.25, PAL.br1);
+  }
+
+  // ── The brick block with the sign ──
+  schoolSection(L, X.mass);
+  for (let i = -2; i <= 2; i++) classWindow(L, -6.95 + i * 1.3, 1.15, PAL.br1);
+  const sg = S.sign, lineH = 8 * sg.px;
+  const bw = signWidth('MIDDLE SCHOOL') * sg.px / 2 + 0.24;
+  const by0 = sg.top - 2 * lineH - sg.gap - 0.2, by1 = sg.top + 0.2;
+  L.walls.sign_board.push([sg.x - bw, sg.x + bw, by0, by1, 0, 0.05]);
+  sceneBox(L.trim, sg.x - bw - 0.07, sg.x + bw + 0.07, by1, by1 + 0.07, 0, 0.09, PAL.g1);     // its frame
+  sceneBox(L.trim, sg.x - bw - 0.07, sg.x + bw + 0.07, by0 - 0.07, by0, 0, 0.09, PAL.g1);
+  sceneBox(L.trim, sg.x - bw - 0.07, sg.x - bw, by0, by1, 0, 0.09, PAL.g1);
+  sceneBox(L.trim, sg.x + bw, sg.x + bw + 0.07, by0, by1, 0, 0.09, PAL.g1);
+  schoolLettering(L.letters, 'ROBERT ADAMS', sg.x, sg.top, sg.px, 0.05, 0.12, PAL.white);
+  schoolLettering(L.letters, 'MIDDLE SCHOOL', sg.x, sg.top - lineH - sg.gap, sg.px, 0.05, 0.12, PAL.white);
+  // A concrete band ties the two left-hand blocks together at canopy height
+  sceneBox(L.trim, X.wingL.x0 - 0.04, X.wingL.x1, 2.86, 3.0, 0, 0.05, PAL.g1);
+  sceneBox(L.trim, X.mass.x0, X.mass.x1, 2.86, 3.0, 0, 0.05, PAL.g1);
+
+  // ── The entrance tower: two open doorways, three tall strips of glass ──
+  const D = S.door;
+  const doors = [{ x0: -D.x1, x1: -D.x0, y1: D.h, depth: D.depth }, { x0: D.x0, x1: D.x1, y1: D.h, depth: D.depth }];
+  schoolSection(L, X.tower, doors);
+  const dim = '#27222f';
+  for (const o of doors) {
+    // (single faces: the lining is seen edge-on from straight in front)
+    sceneBox(L.trim, o.x0, o.x1, 0, 0.035, -o.depth, 0, PAL.g5, 59);                       // hall floor
+    sceneBox(L.trim, o.x0, o.x0 + 0.03, 0.035, o.y1, -o.depth, -0.1, dim, 62);             // dark lining
+    sceneBox(L.trim, o.x1 - 0.03, o.x1, 0.035, o.y1, -o.depth, -0.1, dim, 61);
+    sceneBox(L.trim, o.x0, o.x1, o.y1 - 0.03, o.y1, -o.depth, -0.1, dim, 55);
+    sceneBox(L.hall, o.x0, o.x1, 0.035, o.y1, -o.depth, -o.depth + 0.03, dim, 47);         // glows at night
+  }
+  for (const cx of [-1.75, 0, 1.75]) {
+    schoolWindow(L, cx, 3.85, 1.2, 3.35, { cols: 2, rows: 4, frame: PAL.sl3, sill: PAL.g2, lit: true });
+  }
+  // A low roof-light on top of the tower
+  const th = X.tower.h;
+  sceneBox(L.trim, -1.4, 1.4, th, th + 0.8, -4.6, -2.2, PAL.sl2);
+  sceneBox(L.trim, -1.5, 1.5, th + 0.8, th + 0.9, -4.7, -2.1, PAL.sl1);
+  sceneBox(L.lit, -1.2, 1.2, th + 0.4, th + 0.7, -2.2, -2.17, PAL.sk3);
+
+  // ── Centre brick section: a door between two windows, behind the canopy ──
+  const doorM = { x0: 4.5, x1: 6.0, y1: 2.5, depth: 0.5 };
+  schoolSection(L, X.mid, [doorM]);
+  schoolSideDoor(L, doorM);
+  classWindow(L, 3.75, 1.15, PAL.br1);
+  classWindow(L, 6.75, 1.15, PAL.br1);
+  for (const cx of [4.05, 5.25, 6.45]) classWindow(L, cx, 3.5, PAL.br1);
+
+  // ── Sandstone wing: end door, two rows of windows ──
+  const doorR = { x0: 10.6, x1: 12.1, y1: 2.5, depth: 0.5 };
+  schoolSection(L, X.stone, [doorR]);
+  schoolSideDoor(L, doorR);
+  for (const cx of [8.3, 9.5]) classWindow(L, cx, 1.15, PAL.ta1);
+  for (const cx of [8.2, 9.4, 10.6, 11.8]) classWindow(L, cx, 3.7, PAL.ta1);
+
+  // ── Portico over the main doors, and the long canopy on columns ──
+  const po = S.portico, ca = S.canopy;
+  sceneBox(L.trim, po.x0, po.x1, po.y0 + 0.07, po.y1, 0, po.z1, PAL.white);
+  sceneBox(L.trim, po.x0 - 0.04, po.x1 + 0.04, po.y0, po.y0 + 0.07, 0, po.z1 + 0.04, PAL.g2);
+  sceneBox(L.trim, po.x0 - 0.06, po.x1 + 0.06, po.y1, po.y1 + 0.09, 0, po.z1 + 0.06, PAL.g1);
+  for (const x of [-3.0, -1.62, 1.62, 3.0]) schoolColumn(L, x, po.z1 - 0.22, po.y0, 0.3);
+  sceneBox(L.trim, ca.x0, ca.x1, ca.y0 + 0.06, ca.y1 - 0.06, 0, ca.z1, PAL.g1);
+  sceneBox(L.trim, ca.x0, ca.x1 + 0.03, ca.y0, ca.y0 + 0.06, 0, ca.z1 + 0.03, PAL.g3);
+  sceneBox(L.trim, ca.x0, ca.x1 + 0.04, ca.y1 - 0.06, ca.y1, 0, ca.z1 + 0.04, PAL.white);
+  for (const x of [4.25, 6.25, 7.5, 8.9, 10.35, 12.82]) schoolColumn(L, x, ca.z1 - 0.2, ca.y0, 0.25);
+
+  // ── Roof clutter ──
+  schoolRoofUnit(L, -13.2, X.wingL.h + 0.04, -3.2, 1.2, 0.9);
+  schoolRoofUnit(L, -8.4, X.mass.h + 0.04, -4.2, 1.4, 1.0);
+  schoolRoofUnit(L, -5.4, X.mass.h + 0.04, -2.6, 0.9, 0.9);
+  schoolRoofUnit(L, 5.3, X.mid.h + 0.04, -3.4, 1.2, 0.9);
+  schoolRoofUnit(L, 9.4, X.stone.h + 0.04, -4.0, 1.4, 1.0);
+  schoolRoofUnit(L, 11.3, X.stone.h + 0.04, -2.4, 0.8, 0.8);
+
+  // ── Flagpole by the main entrance ──
+  const pl = S.pole;
+  sceneBox(L.trim, pl.x - 0.06, pl.x + 0.06, 0, pl.top, pl.z - 0.06, pl.z + 0.06, PAL.g1);
+  sceneBox(L.trim, pl.x - 0.2, pl.x + 0.2, 0, 0.2, pl.z - 0.2, pl.z + 0.2, PAL.g3);          // footing
+  sceneBox(L.trim, pl.x - 0.11, pl.x + 0.11, pl.top, pl.top + 0.2, pl.z - 0.11, pl.z + 0.11, PAL.ye2);   // gold cap
+
+  if (!forCard) {
+    schoolFence(L.trim, -34, X.wingL.x0);
+    schoolFence(L.trim, X.stone.x1, 34);
+  }
+
+  // ── Bake: one mesh per texture, one for all the trim, one per glow ──
+  for (const name in L.walls) {
+    if (!L.walls[name].length) continue;
+    const m = sceneTexMesh(L.walls[name], name);
+    if (name === 'pavement' || name === 'roof_flat') m.castShadow = false;
+    school.add(m);
+  }
+  school.add(sceneColourMesh(L.trim));
+  school.add(sceneColourMesh(L.dark, null, false));
+  school.add(sceneColourMesh(L.lit, M.glass, false));
+  school.add(sceneColourMesh(L.hall, M.hall, false));
+  school.add(sceneColourMesh(L.letters, M.sign, false));
+
+  const flag = buildSchoolFlag();
+  flag.position.set(pl.x - 0.06, pl.top - 0.08, pl.z);
+  school.add(flag);
+  school.userData.flag = flag;
+
+  // Warm light lying on the paving in front of the open doors at night
+  if (!forCard) {
+    const spill = new THREE.Mesh(G3.geo(3.4, 0.01, 1.5), M.spill);
+    spill.position.set(0, sw.y + 0.02, 0.75);
+    spill.visible = false;
+    school.add(spill);
+    school.userData.spill = spill;
+  }
+  return school;
+}
+
+// Draws the school: built once, then each frame the flag ripples and, at
+// night or under storm clouds, the windows and the entrance glow.
+let _school = null;
 function drawSchool() {
-  const L = schoolLayout();
-  const h = L.B + 14;
-  const cv = sceneLayer('school', PX.W, h, '', () => paintSchool(L));
-  PX.c.drawImage(cv, 0, 0);
-  drawSchoolFlag(L.poleX - 1, L.poleTop + 1, t, windX);
+  if (!_school) { _school = buildSchool(false); G3.scene.add(_school); }
+  poseSchoolFlag(_school.userData.flag, t, windX);
 
-  // Windows glow warm at night; the lights also come on in a storm
-  const na = nightAmount();
-  const glow = Math.max(constrain((na - 0.2) / 0.4, 0, 1), constrain((weatherAlpha - 0.55) * 2, 0, 0.75));
-  if (glow > 0.02) {
-    PX.light(() => {
-      const lit = sceneLayer('schoolLit', PX.W, h, '', paintSchoolLights);
-      PX.alpha(glow, () => PX.c.drawImage(lit, 0, 0));
-    });
-  }
+  const glow = Math.max(constrain((G3.night - 0.2) / 0.4, 0, 1), constrain((weatherAlpha - 0.55) * 2, 0, 0.75));
+  const M = sceneMats();
+  M.glass.emissiveIntensity = glow * 0.85;
+  M.hall.emissiveIntensity = glow * 0.9;
+  M.sign.emissiveIntensity = glow * 0.3;
+  M.spill.opacity = glow * 0.22;
+  _school.userData.spill.visible = glow > 0.02;
 }
-drawSchool.pixel = true;
+drawSchool.g3 = true;
 
 // ── Fireflies ────────────────────────────────────────
 
-// Spawns, moves and draws the pulsing fireflies that come out at night.
-// Positions are in art pixels. The glow is queued with PX.light so it is
-// never dulled by the night tint.
+// Spawns, moves and draws the pulsing fireflies that come out at night:
+// small glowing cubes drifting over the lawn. Each one lives in world
+// coordinates (wx, wy) with a height h in blocks. Their materials are
+// unlit, so the night never dulls them.
+let _fireflies = null;
+function buildFireflies() {
+  const group = new THREE.Group();
+  const T = G3.T;
+  group.userData.bugs = [];
+  group.userData.mats = {
+    gold:  [G3.mat(PAL.ye3, { basic: true }), G3.mat(PAL.ye2, { basic: true }), G3.mat(PAL.ye1, { basic: true })],
+    green: [G3.mat(PAL.gr2, { basic: true }), G3.mat(PAL.gr1, { basic: true }), G3.mat(PAL.ye1, { basic: true })],
+    haloGold:  G3.mat(PAL.ye2, { basic: true, transparent: true, opacity: 0.28, depthWrite: false }),
+    haloGreen: G3.mat(PAL.gr1, { basic: true, transparent: true, opacity: 0.28, depthWrite: false }),
+  };
+  for (let i = 0; i < NUM_FIREFLIES; i++) {
+    const core = G3.box(2 * T, 2 * T, 2 * T, group.userData.mats.gold[0]);
+    const halo = G3.box(6 * T, 6 * T, 6 * T, group.userData.mats.haloGold);
+    core.castShadow = core.receiveShadow = halo.castShadow = halo.receiveShadow = false;
+    core.visible = halo.visible = false;
+    group.add(core, halo);
+    group.userData.bugs.push({ core, halo });
+  }
+  return group;
+}
+
 function updateAndDrawFireflies() {
-  const na = nightAmount();
-  const top = PX.HOR + 7, bottom = PX.H - 10;
+  const na = G3.night;
+  if (!_fireflies) { _fireflies = buildFireflies(); G3.scene.add(_fireflies); }
+  const bugs = _fireflies.userData.bugs, mats = _fireflies.userData.mats;
 
   // Spawn/despawn fireflies based on night
   if (na > 0.3 && fireflies.length < NUM_FIREFLIES) {
     fireflies.push({
-      x: random(0, PX.W),
-      y: random(PX.HOR, PX.H - 7),
-      tx: random(13, PX.W - 13),
-      ty: random(top, bottom),
+      wx: random(0, 1), wy: random(0.08, 1), h: random(0.4, 1.8),
+      twx: random(0.03, 0.97), twy: random(0.12, 0.96), th: random(0.4, 1.8),
       speed: random(0.3, 0.8),
       phase: random(TWO_PI),
       pulseSpeed: random(0.03, 0.07),
       hue: random(55, 75),
-      size: random(3, 5)
+      size: random(3, 5),
     });
   }
   if (na < 0.1) {
-    fireflies = [];
+    if (fireflies.length) fireflies.length = 0;
+    if (_fireflies.visible) _fireflies.visible = false;
     return;
   }
+  _fireflies.visible = true;
 
-  for (const f of fireflies) {
+  for (let i = 0; i < bugs.length; i++) {
+    const f = fireflies[i], bug = bugs[i];
+    if (!f) { bug.core.visible = bug.halo.visible = false; continue; }
     // Drift toward target
-    f.x = lerp(f.x, f.tx, 0.005 * f.speed);
-    f.y = lerp(f.y, f.ty, 0.005 * f.speed);
+    f.wx = lerp(f.wx, f.twx, 0.005 * f.speed);
+    f.wy = lerp(f.wy, f.twy, 0.005 * f.speed);
+    f.h = lerp(f.h, f.th, 0.005 * f.speed);
     // Gentle sine wobble
-    f.y += sin(t * 0.04 + f.phase) * 0.17;
-    f.x += cos(t * 0.03 + f.phase * 1.3) * 0.1;
+    f.h += Math.sin(t * 0.04 + f.phase) * 0.006;
+    f.wx += Math.cos(t * 0.03 + f.phase * 1.3) * 0.00016;
     // Pick new target when close
-    if (dist(f.x, f.y, f.tx, f.ty) < 7) {
-      f.tx = random(13, PX.W - 13);
-      f.ty = random(top, bottom);
+    if (Math.hypot((f.wx - f.twx) * G3.GW, (f.wy - f.twy) * G3.GD) < 0.4) {
+      f.twx = random(0.03, 0.97);
+      f.twy = random(0.12, 0.96);
+      f.th = random(0.4, 1.8);
+    }
+    // Pulsing glow: dark → ember → glow → flash
+    const pulse = (Math.sin(t * f.pulseSpeed + f.phase) * 0.5 + 0.5) * na;
+    if (pulse < 0.18) { bug.core.visible = bug.halo.visible = false; continue; }
+    const green = f.hue > 66;                   // some flash yellow-green, some gold
+    const level = pulse > 0.75 ? 2 : pulse > 0.45 ? 1 : 0;
+    bug.core.visible = true;
+    bug.core.material = (green ? mats.green : mats.gold)[level];
+    G3.place(bug.core, f.wx, f.wy, f.h);
+    bug.core.scale.setScalar(level === 2 ? 1.5 : level === 1 ? 1 : 0.5);
+    bug.halo.visible = level > 0;
+    if (level > 0) {
+      bug.halo.material = green ? mats.haloGreen : mats.haloGold;
+      bug.halo.position.copy(bug.core.position);
+      bug.halo.scale.setScalar((level === 2 ? 1.25 : 0.8) * f.size / 4);
     }
   }
-
-  PX.light(() => {
-    for (const f of fireflies) {
-      // Pulsing glow: dark → ember → glow → flash
-      const pulse = (sin(t * f.pulseSpeed + f.phase) * 0.5 + 0.5) * na;
-      if (pulse < 0.18) continue;
-      const green = f.hue > 66;                   // some flash yellow-green, some gold
-      const pal = green ? { g: PAL.gr1, d: PAL.gr2 } : null;
-      if (pulse > 0.45) {
-        const r = pulse > 0.75 ? Math.round(f.size) + 1 : Math.round(f.size) - 1;
-        PX.alpha(0.55, () => drawSceneDisc(f.x, f.y, r, green ? PAL.gr1 : PAL.ye2, 0.25));
-      }
-      PX.spr('firefly', f.x, f.y, { frame: pulse > 0.75 ? 'flash' : pulse > 0.45 ? 'glow' : 'dim', pal });
-    }
-  });
 }
-updateAndDrawFireflies.pixel = true;
+updateAndDrawFireflies.g3 = true;
 
 // ── I SPY card art ───────────────────────────────────
 
-// A small Robert Adams Middle School for its I SPY card: about 120 wide and
-// 58 tall, standing on (x, y) at its bottom centre. The card enlarges it.
-CARD_ART.school = (x, y, tick) => {
-  x = Math.round(x); y = Math.round(y);
-  const B = y - 3;                                   // building stands on a strip of sidewalk
-  const wall = (x0, w, h, base, dark, light) => {
-    PX.rect(x0, B - h, w, h, base);
-    PX.rect(x0, B - h, 1, h, light);
-    PX.rect(x0 + w - 1, B - h, 1, h, dark);
-    PX.rect(x0 - 1, B - h - 2, w + 2, 2, PAL.sl2);   // parapet
-    PX.rect(x0 - 1, B - h - 2, w + 2, 1, PAL.sl1);
-  };
-  const win = (wx, wy) => {
-    PX.rect(wx, wy, 4, 5, PAL.sl3);
-    PX.rect(wx + 1, wy + 1, 2, 3, PAL.sk3);
-    PX.px(wx + 1, wy + 1, PAL.sk1);
-  };
-  const door = (dx, w) => {
-    PX.rect(dx, B - 11, w, 11, PAL.g5);
-    PX.rect(dx + 1, B - 10, w - 2, 2, PAL.sk3);
-    PX.rect(dx + 1, B - 7, w - 2, 7, PAL.wo3);
-    PX.rect(dx + (w >> 1), B - 7, 1, 7, PAL.wo4);
-  };
-  // Lawn and sidewalk
-  PX.rect(x - 62, y - 3, 124, 3, PAL.g1);
-  PX.rect(x - 62, y - 3, 124, 1, PAL.white);
-  PX.rect(x - 62, y - 1, 124, 1, PAL.g3);
-  // Far-left wing
-  wall(x - 60, 24, 24, PAL.br3, PAL.br4, PAL.br2);
-  PX.rect(x - 59, B - 14, 8, 14, PAL.br4);
-  door(x - 58, 6);
-  for (let i = 0; i < 3; i++) { win(x - 49 + i * 5, B - 21); win(x - 49 + i * 5, B - 10); }
-  // Sandstone wing
-  wall(x + 26, 28, 26, PAL.ta2, PAL.ta3, PAL.ta1);
-  for (let i = 0; i < 5; i++) win(x + 28 + i * 5, B - 23);
-  for (let i = 0; i < 3; i++) win(x + 28 + i * 5, B - 10);
-  PX.rect(x + 44, B - 15, 9, 15, PAL.ta3);
-  door(x + 46, 6);
-  // Centre brick section
-  wall(x + 7, 19, 23, PAL.br2, PAL.br3, PAL.br1);
-  for (let i = 0; i < 3; i++) win(x + 10 + i * 5, B - 21);
-  door(x + 14, 6);
-  // Left mass with the sign
-  wall(x - 36, 29, 30, PAL.br2, PAL.br3, PAL.br1);
-  PX.rect(x - 32, B - 26, 21, 1, PAL.white);         // the sign, too small to read
-  PX.rect(x - 32, B - 24, 9, 1, PAL.white);
-  PX.rect(x - 22, B - 24, 11, 1, PAL.white);
-  PX.rect(x - 30, B - 21, 7, 1, PAL.white);
-  PX.rect(x - 22, B - 21, 9, 1, PAL.white);
-  PX.rect(x - 28, B - 12, 12, 12, PAL.br3);
-  win(x - 27, B - 9); win(x - 21, B - 9);
-  // Glass tower with its low roof-light
-  wall(x - 8, 16, 33, PAL.g1, PAL.g2, PAL.white);
-  PX.rect(x - 3, B - 36, 6, 1, PAL.sl2);
-  for (let i = 0; i < 3; i++) {
-    PX.rect(x - 6 + i * 4, B - 31, 3, 13, PAL.sl3);
-    PX.rect(x - 5 + i * 4, B - 30, 1, 11, PAL.sk3);
-    PX.rect(x - 5 + i * 4, B - 30, 1, 4, PAL.sk1);
-  }
-  PX.rect(x - 7, B - 12, 14, 12, PAL.g5);
-  door(x - 6, 6); door(x, 6);
-  // Canopy on columns
-  PX.rect(x - 9, B - 15, 66, 3, PAL.g1);
-  PX.rect(x - 9, B - 15, 66, 1, PAL.white);
-  PX.rect(x - 9, B - 13, 66, 1, PAL.g2);
-  for (const cxo of [-9, 7, 13, 21, 27, 36, 44, 55]) {
-    PX.rect(x + cxo, B - 12, 1, 12, PAL.white);
-  }
-  // Flagpole by the main entrance and a little flag waving out over the roof
-  PX.rect(x - 9, B - 41, 1, 42, PAL.g2);
-  PX.px(x - 9, B - 42, PAL.ye2);
-  for (let i = 0; i < 8; i++) {
-    const dy = Math.round(Math.sin(i * 0.9 - tick * 0.13) * 0.8 * (i / 7));
-    for (let r = 0; r < 5; r++) {
-      const col = (i < 3 && r < 3) ? PAL.bl3 : (r % 2 === 0 ? PAL.re2 : PAL.white);
-      PX.px(x - 10 - i, B - 41 + dy + r, col);
-    }
-  }
-};
+// The school's I SPY card shows the same block building as the garden.
+G3.cardArt('school', () => buildSchool(true), { w: 110, h: 56, yaw: 0.32 });
