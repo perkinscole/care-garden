@@ -131,7 +131,9 @@ class Kid {
     const ty = constrain(head.y - r * 0.8, sh - reach * 0.5, sh + reach * 0.85);
     const out = sqrt(max(0.02, reach * reach - (ty - sh) * (ty - sh)));
     const sx = tall ? lerp(foot.x, head.x, constrain(ty / max(0.1, head.y), 0, 1)) : head.x;
-    const sz = tall ? foot.z : head.z, front = tall ? 0.1 : 0.3;
+    // (under a tall bloom they stand just behind the stem, so that the arm
+    // on our side lines up with it)
+    const sz = tall ? foot.z : head.z, front = tall ? -0.3 * PEOPLE3.scale(L) : 0.3;
     const x = sx - this.pickSide * (sqrt(max(0.02, out * out - front * front)) + 0.05);
     return { crouch: false, arm: atan2(out, sh - ty), wx: 0.5 + x / G3.GW, wy: min((sz + front) / G3.GD, 0.99), x: sx, z: sz };
   }

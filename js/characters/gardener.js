@@ -63,13 +63,15 @@ class Gardener {
   // watered from above. Anything taller than she can lift the can is
   // watered at the foot of its stem if she fits under the bloom, or else
   // just beside the bloom, standing in front of the photo, not behind it.
+  // (Otherwise she stands a little behind the spot, so that the arm on our
+  // side, which holds the can, lines up with it.)
   waterPlan(f) {
     const head = PEOPLE3.head3(f, 0), foot = PEOPLE3.foot3(f);
     const r = PEOPLE3.bloomR(f, 0);
     const top = head.y + r;
-    if (top <= GARDENER_SPOUT_LOW - 0.05) return { high: false, x: head.x, z: head.z, land: max(0, top - 0.1), front: 0.07 };
-    if (top <= GARDENER_SPOUT_HIGH - 0.05) return { high: true, x: head.x, z: head.z, land: max(0, top - 0.1), front: 0.07 };
-    if (head.y - r > PEOPLE3.headTop(this.look) + 0.15) return { high: false, x: foot.x, z: foot.z, land: 0, front: 0.07 };
+    if (top <= GARDENER_SPOUT_LOW - 0.05) return { high: false, x: head.x, z: head.z, land: max(0, top - 0.1), front: -0.3 };
+    if (top <= GARDENER_SPOUT_HIGH - 0.05) return { high: true, x: head.x, z: head.z, land: max(0, top - 0.1), front: -0.3 };
+    if (head.y - r > PEOPLE3.headTop(this.look) + 0.15) return { high: false, x: foot.x, z: foot.z, land: 0, front: -0.3 };
     return { high: true, x: head.x - this.waterSide * (r + 0.15), z: head.z, land: 0, front: 0.25 };
   }
 
