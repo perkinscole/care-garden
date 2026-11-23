@@ -144,7 +144,7 @@ care-garden/
     birds.mp3, rain.mp3, night.mp3, sheep.wav, ...
 ```
 
-Want to draw a new character or flower? Start with `docs/PIXEL_ART.md`; the rabbit (`js/characters/rabbit.js` and its sprite in `js/art/animals_art.js`) is the smallest complete example.
+Want to build a new character or flower? Start with `docs/GARDEN_3D.md`; the rabbit (`js/characters/rabbit.js` and its model in `js/art/animals_art.js`) is the smallest complete example.
 
 ## The CARE Score
 
