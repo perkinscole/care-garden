@@ -17,6 +17,7 @@ const SNAP_COOLDOWN        = 1000;
 const PANEL_CYCLE_DURATION = 20000;
 const MAX_FLOWERS          = 1000;
 const MAX_GROUP_FACES      = 6;
+const FACE_CAPTURE_SIZE    = 128;   // captured face photos are stored at most this many pixels square
 
 // Day/night cycle timing and ambient element counts
 // ── Day/Night Cycle ──────────────────────────────────

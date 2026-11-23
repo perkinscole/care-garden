@@ -44,7 +44,7 @@ function setup() {
   nsfwjs.load().then(function(model) {
     nsfwModel = model;
     nsfwReady = true;
-  });
+  }).catch(function() { /* no moderation model (offline): snaps are allowed through */ });
 
   soundFormats('mp3', 'wav');
   birds = loadSound('sounds/birds.mp3',    () => { birds.setVolume(0.4); birds.loop(); });
@@ -143,6 +143,18 @@ function draw() {
         ctx.resume();
       }
     } catch (e) { /* ignore */ }
+  }
+
+  // New school day: the kiosk often runs overnight, so start the day's
+  // count and milestones afresh when the date changes.
+  if (frameCount % 600 === 0) {
+    const todayKey = getTodayKey();
+    if (currentDayKey && todayKey !== currentDayKey) {
+      careScore = 0;
+      smileStats.today = 0;
+      lastMilestoneCelebrated = -1;
+    }
+    currentDayKey = todayKey;
   }
 
   // Face-detection stall watchdog — if ml5 hasn't ticked in 5s, clear stale
@@ -347,13 +359,14 @@ if (groundhog) {
   noStroke(); fill(0, 0, 8);
   rect(0, splitY(), width, height - splitY());
 
-  if (video && videoW && videoH) {
+  {
     // The video rectangle is snapped to the art grid so the pixel panels
     // on either side butt up against it exactly.
     const destH  = PX.SH - PX.H;                       // art pixels
     const minPanel = Math.min(Math.round(150 / PX.S), Math.round(PX.W * 0.15));
     const availW = PX.W - minPanel * 2;
-    const videoAspect = videoW / videoH;
+    const haveVideo = !!(video && videoW && videoH);
+    const videoAspect = haveVideo ? videoW / videoH : 4 / 3;   // until the camera reports in
 
     let aw, ah;
     if (videoAspect > availW / destH) { aw = availW; ah = Math.round(availW / videoAspect); }
@@ -375,15 +388,26 @@ if (groundhog) {
     PX.call(drawSmileGallery, offsetX);
     PX.end();
 
-    push();
-    translate(offsetX + displayW, splitY() + offsetY);
-    scale(-1, 1);
-    image(video, 0, 0, displayW, displayH);
-    pop();
+    if (haveVideo) {
+      push();
+      translate(offsetX + displayW, splitY() + offsetY);
+      scale(-1, 1);
+      image(video, 0, 0, displayW, displayH);
+      pop();
+    }
 
     PX.begin();
-    PX.call(drawBoxes, detections, offsetX, displayW, displayH);
-    PX.call(drawFaceDecorations, detections);
+    if (haveVideo) {
+      PX.call(drawBoxes, detections, offsetX, displayW, displayH);
+      PX.call(drawFaceDecorations, detections);
+    } else {
+      // No camera yet (or permission refused): say so instead of a blank hole
+      PX.rect(videoArt.x, videoArt.y, videoArt.w, videoArt.h, PAL.g5);
+      PX.text('Waiting for the camera...', videoArt.x + videoArt.w / 2, videoArt.y + videoArt.h / 2 - 8,
+        { align: 'center', color: PAL.g1, maxW: videoArt.w - 12 });
+      PX.text('Allow camera access to grow flowers', videoArt.x + videoArt.w / 2, videoArt.y + videoArt.h / 2 + 6,
+        { align: 'center', color: PAL.g3, maxW: videoArt.w - 12 });
+    }
     PX.end();
   }
 
@@ -671,12 +695,22 @@ function isFrameSafe(predictions) {
 
 // Captures a face region from the video feed as a mirrored image
 function captureFaceImg(box) {
-  let img = createGraphics(box._width, box._height);
+  // Square crop a little wider than the detected box so hair and chin make
+  // it into the flower, kept inside the video frame.
+  const vw = videoW || video.width, vh = videoH || video.height;
+  let side = Math.min(Math.max(box._width, box._height) * 1.15, vw, vh);
+  const cx = box._x + box._width / 2, cy = box._y + box._height / 2;
+  const sx = constrain(cx - side / 2, 0, vw - side);
+  const sy = constrain(cy - side / 2, 0, vh - side);
+  // Faces are shown small, so 128px is plenty; a garden of 1,000 flowers
+  // would otherwise hold hundreds of megabytes of full-size captures.
+  const out = Math.max(16, Math.min(FACE_CAPTURE_SIZE, Math.round(side)));
+  let img = createGraphics(out, out);
+  img.pixelDensity(1);
   img.push();
-  img.translate(box._width, 0);
+  img.translate(out, 0);
   img.scale(-1, 1);
-  img.image(video, 0, 0, box._width, box._height,
-            box._x, box._y, box._width, box._height);
+  img.image(video, 0, 0, out, out, sx, sy, side, side);
   img.pop();
   return img;
 }
