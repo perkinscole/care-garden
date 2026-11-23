@@ -34,11 +34,14 @@ const FLOWER_CROWD_AT     = 100;  // flowers older than the newest 100 are "crow
 
 // ── Sizes in blocks ───────────────────────────────────
 // A flower is built once at its celebration size and scaled as a whole.
-//   single flower   photo 2 blocks across on a stem 3.3-4.4 blocks tall;
-//                   settled x0.66: photo 1.3, stem 2.2-2.9;
+//   single flower   photo 2 blocks across (bloom about 3.6 with petals), its
+//                   centre 3.2-4.4 blocks up (taller the bigger its baseSize);
+//                   settled x0.66: photo 1.3, centre 2.1-2.9;
 //                   crowded x0.60: photo 1.2
-//   group plant     photos 1.24 across; settled x0.74: 0.92
+//   group plant     photos 1.24 across, the top one 3.5-6.5 blocks up;
+//                   settled x0.74: photos 0.92
 //   no photo        middle block 1 across on a stem 2-2.6 blocks tall
+// A boost swells the whole plant by up to 18%.
 // (A grown-up is 2 blocks tall with a head half a block across.)
 const FLOWER_U_SINGLE = 1.0;      // half the width of a single flower's photo
 const FLOWER_U_GROUP  = 0.62;     // ... of each photo on a group plant
