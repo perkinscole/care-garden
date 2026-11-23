@@ -287,12 +287,18 @@ if (groundhog) {
   for (let tc of teachers)     renderList.push({ wy: tc.wy, obj: tc });
   for (let ak of arrivalKids)  renderList.push({ wy: ak.wy, obj: ak });
 
-  renderList.sort((a, b) => a.wy - b.wy);
-  for (let item of renderList) PX.drawEntity(item.obj);
-
-  // Time-of-day tint over everything painted so far, then the glows
-  applyGardenTint();
+  // The scenery is finished: tint it for the time of day, then switch on its
+  // lights (windows, lamps) so they glow behind the characters, not over them.
+  applyGardenTint(drawingContext);
   PX.flushLights();
+
+  // Characters and flowers go on their own layer, tinted the same way
+  renderList.sort((a, b) => a.wy - b.wy);
+  const layer = PX.beginLayer();
+  for (let item of renderList) PX.drawEntity(item.obj);
+  applyGardenTint(layer);
+  PX.endLayer();
+  PX.flushLights();   // anything a character switched on (kept bright)
 
   // Sky goes in last, behind the world
   drawSkyBehind();
@@ -315,6 +321,7 @@ if (groundhog) {
 
   // Fireflies at night
   PX.call(updateAndDrawFireflies);
+  PX.flushLights();
 
   PX.call(drawWeatherForecast);
   drawGardenLabels();
@@ -522,10 +529,9 @@ if (groundhog) {
 
 // ── Garden render helpers ─────────────────────────────
 
-// Colours the finished garden for the time of day (and storms) without
-// touching the still-transparent sky.
-function applyGardenTint() {
-  const c = drawingContext;
+// Colours whatever has been painted on a canvas so far for the time of day
+// (and storms), leaving transparent areas, like the still-empty sky, alone.
+function applyGardenTint(c) {
   const layers = [];
   const a = lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'a');
   if (a > 0.01) {
@@ -534,7 +540,9 @@ function applyGardenTint() {
     const b = Math.round(lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'b'));
     layers.push([`rgb(${r},${g},${b})`, a]);
   }
-  if (weatherAlpha > 0.02) layers.push(['#39445c', Math.min(weatherAlpha, 1) * 0.26]);
+  // Storm grey, eased off at night so a night storm does not go black
+  const storm = Math.min(weatherAlpha, 1) * 0.26 * (1 - 0.5 * nightAmount());
+  if (storm > 0.01) layers.push(['#39445c', storm]);
   if (!layers.length) return;
   c.globalCompositeOperation = 'source-atop';
   for (const [col, alpha] of layers) {

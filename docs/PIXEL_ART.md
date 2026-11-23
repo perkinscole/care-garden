@@ -159,9 +159,14 @@ far rain, lightning bolt) draw into it; `sketch.js` paints the dithered
 gradient first. Those two functions are called with `PX` already aimed at
 the sky layer, whose size is `PX.W × PX.H`.
 
-Frame order: town → ground → trees → grass → school → puddles → sorted
-entities and flowers → tint → lights → sky (slid in behind) → speech bubbles
-→ `drawWeatherFront()` → flying creatures → fireflies → forecast → labels.
+Frame order: town → ground → trees → grass → school → puddles → tint →
+scenery lights → characters and flowers (sorted by `wy`, on their own
+tinted layer) → sky (slid in behind) → speech bubbles → `drawWeatherFront()`
+→ flying creatures → fireflies → forecast → labels.
+
+The flagpole stands against the school wall just left of the tower, so
+everyone on the sidewalk passes in front of it. The forecast strip owns the
+top-right corner (art y 3–21).
 
 ## Contracts between modules
 

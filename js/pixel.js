@@ -81,6 +81,11 @@ const PX = {
     this._skyCv.width = this.W;
     this._skyCv.height = this.H;
     this._skyGradKey = null;
+    // Characters and flowers are painted on their own full-resolution layer
+    // so they can be tinted separately and laid over the lit-up scenery.
+    this._entCv = document.createElement('canvas');
+    this._entCv.width = this.W * this.S;
+    this._entCv.height = this.H * this.S;
   },
 
   // Everything between begin() and end() is drawn in art pixels.
@@ -94,6 +99,23 @@ const PX = {
     this.c = c;
   },
   end() { this.main.restore(); this.c = this.main; },
+
+  // Clears the character layer and aims PX at it; endLayer() aims PX back
+  // at the main canvas and lays the layer over it.
+  beginLayer() {
+    const c = this._entCv.getContext('2d');
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, this._entCv.width, this._entCv.height);
+    c.setTransform(this.S, 0, 0, this.S, 0, 0);
+    c.imageSmoothingEnabled = false;
+    c.globalAlpha = 1;
+    this.c = c;
+    return c;
+  },
+  endLayer() {
+    this.c = this.main;
+    this.main.drawImage(this._entCv, 0, 0, this.W, this.H);
+  },
 
   // Runs old screen-pixel drawing code from inside begin()/end().
   legacy(fn) {
