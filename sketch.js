@@ -178,13 +178,7 @@ function draw() {
   PX.tick = frameCount;
   PX.begin();
 
-  const pixelSky = typeof drawSkyLayer === 'function';
-  if (!pixelSky) {            // legacy sky, until scene.js provides drawSkyLayer()
-    PX.call(drawStarsAndMoon);
-    PX.call(drawSky);
-  }
   PX.call(drawTown);
-  if (typeof drawWeatherSky !== 'function') PX.call(drawWeather);
   PX.call(drawGround);
   PX.call(drawTrees);
   PX.call(drawGrass);
@@ -301,14 +295,14 @@ if (groundhog) {
   PX.flushLights();
 
   // Sky goes in last, behind the world
-  drawSkyBehind(pixelSky);
+  drawSkyBehind();
 
   // Speech bubbles
   speechBubbles = speechBubbles.filter(b => b.update());
   for (let b of speechBubbles) PX.drawEntity(b);
 
   // Foreground rain — renders over characters for depth
-  PX.call(typeof drawWeatherFront === 'function' ? drawWeatherFront : drawForegroundRain);
+  PX.call(drawWeatherFront);
 
   // Flying creatures above ground (fade out at night)
   const creatureAlpha = 1.0 - nightAmount();
@@ -554,12 +548,12 @@ function applyGardenTint() {
 
 // Paints the sky layer (gradient, then sun/moon/stars/clouds and weather)
 // and slides it in behind everything already on the canvas.
-function drawSkyBehind(pixelSky) {
+function drawSkyBehind() {
   const sky = PX._skyCv.getContext('2d');
   const key = Math.floor(timeOfDay * 900) + '|' + Math.round(weatherAlpha * 20);
   sky.drawImage(PX.skyGradient(skyStops(), key), 0, 0);
-  if (pixelSky) PX.withTarget(sky, drawSkyLayer);
-  if (typeof drawWeatherSky === 'function') PX.withTarget(sky, drawWeatherSky);
+  PX.withTarget(sky, drawSkyLayer);
+  PX.withTarget(sky, drawWeatherSky);
   const c = drawingContext;
   c.globalCompositeOperation = 'destination-over';
   c.drawImage(PX._skyCv, 0, 0);

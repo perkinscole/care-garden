@@ -2,32 +2,26 @@
 // File: world.js
 // Author: Cole Perkins
 // Date Created: March 28, 2026 (refactored April 1, 2026)
-// Last Modified: April 11, 2026
+// Last Modified: November 22, 2026
 // Description: Coordinate system utilities and day/night helpers.
-//              Converts normalized world positions to screen pixels
-//              and provides time-of-day state for the scene.
+//              Converts normalized world positions to art pixels (and
+//              screen pixels) and provides time-of-day state for the scene.
 // ================================================================
 
 // ── World / Coordinate System ─────────────────────────
 
-// Returns the y-coordinate that divides the sky from the ground (2/3 down the canvas)
+// Returns the screen y where the garden ends and the dashboard begins (2/3 down)
 function splitY()    { return PX.H * PX.S; }
-// Returns the y-coordinate of the front edge of the ground plane
-function gndFront()  { return splitY(); }
-// Returns the y-coordinate of the horizon line
+// Returns the screen y of the horizon line
 function gndHorizon(){ return PX.HOR * PX.S; }
-// Returns the left edge of the ground plane (screen left)
-function gndLeft()   { return 0; }
-// Returns the right edge of the ground plane (screen right)
-function gndRight()  { return width; }
 
-// Converts normalized world coordinates (0-1) to screen pixel positions
+// Converts normalized world coordinates (0-1) to SCREEN pixel positions.
+// Only the flying creatures (and the cat that hunts them) work in screen
+// pixels; everything else uses worldToPx below.
 function worldToScreen(wx, wy) {
-  const lx = lerp(gndLeft(),  gndLeft(),  wy);
-  const rx = lerp(gndRight(), gndRight(), wy);
   return {
-    sx: lerp(lx, rx, wx),
-    sy: lerp(gndHorizon(), gndFront(), wy)
+    sx: wx * PX.W * PX.S,
+    sy: lerp(gndHorizon(), splitY(), wy)
   };
 }
 
@@ -36,11 +30,6 @@ function worldToScreen(wx, wy) {
 // characters are all drawn at one size; depth comes from y-position alone.
 function worldToPx(wx, wy) {
   return PX.toPx(wx, wy);
-}
-
-// Returns a scale factor (0.4 to 0.9) based on depth for perspective sizing
-function depthScale(wy) {
-  return lerp(0.4, 0.9, wy);
 }
 
 // ── Day/Night helpers ─────────────────────────────────
@@ -55,11 +44,6 @@ function lerpKeyframes(keyframes, time, prop) {
     }
   }
   return keyframes[0][prop];
-}
-
-// Returns true if the current time of day falls within the nighttime range
-function isNight() {
-  return timeOfDay > 0.78 || timeOfDay < 0.03;
 }
 
 // Returns a 0-1 value representing how dark it is (0 = full day, 1 = full night)

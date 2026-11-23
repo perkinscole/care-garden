@@ -68,19 +68,6 @@ const TINT_KEYFRAMES = [
   { t: 1.00, r: 22,  g: 28,  b: 84,  a: 0.56 },
 ];
 
-// Ground gradient keyframes keyed by normalized time-of-day (0..1)
-// Ground color keyframes: [timeOfDay, hue, satHorizon, litHorizon, satFront, litFront]
-const GROUND_KEYFRAMES = [
-  { t: 0.00, hue: 108, satH: 20, litH: 16, satF: 35, litF: 10 },
-  { t: 0.07, hue: 108, satH: 28, litH: 35, satF: 48, litF: 22 },
-  { t: 0.15, hue: 108, satH: 30, litH: 42, satF: 55, litF: 28 },
-  { t: 0.50, hue: 108, satH: 30, litH: 42, satF: 55, litF: 28 },
-  { t: 0.60, hue: 100, satH: 25, litH: 35, satF: 45, litF: 22 },
-  { t: 0.72, hue: 105, satH: 20, litH: 22, satF: 35, litF: 14 },
-  { t: 0.78, hue: 108, satH: 18, litH: 16, satF: 30, litF: 10 },
-  { t: 1.00, hue: 108, satH: 20, litH: 16, satF: 35, litF: 10 },
-];
-
 // Score thresholds that trigger a confetti celebration
 const CONFETTI_MILESTONES = [
   1,25,50,67,100,150,200,250,300,350,400,500,750,
