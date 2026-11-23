@@ -315,7 +315,7 @@ const G3 = {
     const idx = new (n * 24 > 65535 ? Uint32Array : Uint16Array)(n * 36);
     const c = new THREE.Color();
     // faces: normal axis/sign and the two in-plane axes
-    const F = [[0, 1, 2, 1], [0, -1, 1, 2], [1, 1, 0, 2], [1, -1, 2, 0], [2, 1, 1, 0], [2, -1, 0, 1]];
+    const F = [[0, 1, 1, 2], [0, -1, 1, 2], [1, 1, 2, 0], [1, -1, 2, 0], [2, 1, 0, 1], [2, -1, 0, 1]];
     let p = 0, ii = 0, vi = 0;
     for (const b of boxes) {
       c.set(b.c);

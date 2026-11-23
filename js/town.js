@@ -806,7 +806,7 @@ function _buildTown() {
   T.group.add(T.smoke);
 
   // Sparkles that hop about on the lake
-  T.sparkMat = G3.mat(PAL.white, { basic: true });
+  T.sparkMat = G3.mat(PAL.wa1);
   for (let i = 0; i < 4; i++) {
     const m = G3.box(0.9, 0.03, 0.18, T.sparkMat, 0, TOWN_LAKE.y + 0.03, 0);
     m.castShadow = false; m.receiveShadow = false;

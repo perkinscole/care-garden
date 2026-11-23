@@ -109,8 +109,8 @@ class Kid {
   }
 
   // How this student will take a flower as it stands right now. A flower
-  // with a bloom is picked standing up, hand on the stem just under the
-  // bloom or as high as the arm goes (the lowest bloom of a group plant); a
+  // with a bloom is picked standing up, hand on the lower edge of the bloom
+  // or as high as the arm goes (the lowest bloom of a group plant); a
   // bud or a stub is picked from a crouch at the foot of the stem. Returns
   // { crouch, arm, wx, wy, x, z }: the arm pose, where to stand, and the
   // point (blocks) the hand goes to.
@@ -123,13 +123,17 @@ class Kid {
       const x = foot.x - this.pickSide * KID_PICK_DIST * PEOPLE3.scale(L);
       return { crouch: true, arm: 'pick', wx: 0.5 + x / G3.GW, wy, x: foot.x, z: foot.z };
     }
-    // the hand goes to the lower edge of the bloom, or as near as an arm can get
+    // The hand goes to the lower edge of the bloom, or as near as an arm
+    // can get. Under a bloom that is over their head they take the stem;
+    // otherwise they stand in front of the photo, not behind it.
     const sh = PEOPLE3.shoulderY(L), reach = PEOPLE3.armReach(L);
+    const tall = head.y - r > PEOPLE3.headTop(L) + 0.1;
     const ty = constrain(head.y - r * 0.8, sh - reach * 0.5, sh + reach * 0.85);
     const out = sqrt(max(0.02, reach * reach - (ty - sh) * (ty - sh)));
-    const sx = lerp(foot.x, head.x, constrain(ty / max(0.1, head.y), 0, 1));   // the stem at that height
-    const x = sx - this.pickSide * (out + 0.08);
-    return { crouch: false, arm: atan2(out, sh - ty), wx: 0.5 + x / G3.GW, wy, x: sx, z: foot.z };
+    const sx = tall ? lerp(foot.x, head.x, constrain(ty / max(0.1, head.y), 0, 1)) : head.x;
+    const sz = tall ? foot.z : head.z, front = tall ? 0.1 : 0.3;
+    const x = sx - this.pickSide * (sqrt(max(0.02, out * out - front * front)) + 0.05);
+    return { crouch: false, arm: atan2(out, sh - ty), wx: 0.5 + x / G3.GW, wy: min((sz + front) / G3.GD, 0.99), x: sx, z: sz };
   }
 
   // Takes one step toward (tx, ty) at the given speed and returns how far

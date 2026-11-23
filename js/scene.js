@@ -866,4 +866,4 @@ updateAndDrawFireflies.g3 = true;
 // ── I SPY card art ───────────────────────────────────
 
 // The school's I SPY card shows the same block building as the garden.
-G3.cardArt('school', () => buildSchool(true), { w: 110, h: 56, yaw: 0.32 });
+G3.cardArt('school', () => buildSchool(true), { w: 110, h: 56, yaw: 0.22 });
