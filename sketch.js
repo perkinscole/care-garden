@@ -20,24 +20,31 @@ function setup() {
   PX.loadFonts();
   loadSmileStats();
 
-  video = createCapture(VIDEO, function(stream) {
-    const track    = stream.getVideoTracks()[0];
-    const settings = track.getSettings();
-    videoW = settings.width  || 640;
-    videoH = settings.height || 480;
-  });
-  video.id("video");
-  video.hide();
+  if (!DEBUG.demo) {
+    // A refused camera or a missing ML library must not stop the garden
+    try {
+      video = createCapture(VIDEO, function(stream) {
+        const track    = stream.getVideoTracks()[0];
+        const settings = track.getSettings();
+        videoW = settings.width  || 640;
+        videoH = settings.height || 480;
+      });
+      video.id("video");
+      video.hide();
 
-  faceapi = ml5.faceApi(video, {
-    withLandmarks:   true,
-    withExpressions: true,
-    withDescriptors: true,
-    minConfidence:   0.5,
-    MODEL_URL: 'https://cdn.jsdelivr.net/gh/ml5js/ml5-data-and-models@face-api/models/faceapi'
-  }, faceReady);
+      if (typeof ml5 !== 'undefined') {
+        faceapi = ml5.faceApi(video, {
+          withLandmarks:   true,
+          withExpressions: true,
+          withDescriptors: true,
+          minConfidence:   0.5,
+          MODEL_URL: 'https://cdn.jsdelivr.net/gh/ml5js/ml5-data-and-models@face-api/models/faceapi'
+        }, faceReady);
+      }
+    } catch (e) { video = null; }
+  }
 
-  nsfwjs.load().then(function(model) {
+  if (typeof nsfwjs !== 'undefined' && !DEBUG.demo) nsfwjs.load().then(function(model) {
     nsfwModel = model;
     nsfwReady = true;
   }).catch(function() { /* no moderation model (offline): snaps are allowed through */ });
@@ -385,9 +392,9 @@ if (groundhog) {
       // No camera yet (or permission refused): say so instead of a blank hole
       PX.rect(videoArt.x, videoArt.y, videoArt.w, videoArt.h, PAL.g5);
       const big = videoArt.w >= 120 ? 2 : 1;
-      const used = PX.text('Waiting for the camera...', videoArt.x + videoArt.w / 2, videoArt.y + videoArt.h / 2 - 14 * big,
+      const used = PX.text(DEBUG.demo ? 'Demo garden' : 'Waiting for the camera...', videoArt.x + videoArt.w / 2, videoArt.y + videoArt.h / 2 - 14 * big,
         { align: 'center', color: PAL.g1, maxW: videoArt.w - 12, scale: big });
-      PX.text('Allow camera access to grow flowers', videoArt.x + videoArt.w / 2, videoArt.y + videoArt.h / 2 - 14 * big + used + 6,
+      PX.text(DEBUG.demo ? 'On the school TV your smile grows a flower here' : 'Allow camera access to grow flowers', videoArt.x + videoArt.w / 2, videoArt.y + videoArt.h / 2 - 14 * big + used + 6,
         { align: 'center', color: PAL.g3, maxW: videoArt.w - 12 });
     }
     PX.end();
@@ -479,6 +486,8 @@ if (groundhog) {
       break; // one snap event per frame
     }
   }
+
+  if (DEBUG.demo) runDemoSmiles();
 
   // Flower spawning — once per snap
   if (postSnapPause > 0) postSnapPause--;
@@ -596,13 +605,18 @@ function drawGardenLabels() {
 //   page     hold an I SPY card on page N of its text
 //   score    set today's CARE score
 //   seed     fixed random seed for repeatable layouts
-const DEBUG = { seed: null, active: false };
+//   demo     run without a camera: stand-in smiles keep planting flowers
+const DEBUG = { seed: null, active: false, demo: false, demoTimer: 120 };
 
 function readDebugParams() {
-  const q = new URLSearchParams(window.location.search);
+  // A host page can supply the parameters itself (window.CARE_QUERY) where
+  // the address bar's query string is not available.
+  const q = new URLSearchParams(window.CARE_QUERY || window.location.search);
   DEBUG.q = q;
   DEBUG.active = [...q.keys()].length > 0;
   if (q.has('seed')) DEBUG.seed = parseInt(q.get('seed')) || 1;
+  // Demo mode: no camera or face detection; stand-in smiles plant the flowers.
+  DEBUG.demo = q.has('demo');
 }
 
 function applyDebugParams() {
@@ -651,6 +665,25 @@ function applyDebugParams() {
     if (what === 'confetti')   { lastMilestoneCelebrated = 100; launchConfetti(); }
     if (what === 'hats')       { hatTimeActive = true; hatTimeAlpha = 255; }
   }
+}
+
+// Demo mode's stand-in visitors: every few seconds one to three of them
+// "smile" and a flower is planted, exactly as a real snap would do it,
+// except that nothing is saved to the smile stats.
+function runDemoSmiles() {
+  if (--DEBUG.demoTimer > 0) return;
+  DEBUG.demoTimer = floor(random(240, 600));
+  const r = random();
+  const n = r < 0.7 ? 1 : r < 0.9 ? 2 : 3;
+  const faces = [];
+  for (let k = 0; k < n; k++) faces.push(makeDemoFace(floor(random(100000))));
+  careScore += n;
+  smileStats.today = careScore;
+  checkMilestone();
+  nextFlowerImgs = faces;
+  pendingPhoto = faces[0];
+  if (n > 1) { groupSnapLabel = n + '-Person Group Photo!'; groupSnapAlpha = 255; }
+  postSnapPause = 90;
 }
 
 // A stand-in "photo" of a smiling face so flowers can be tested without a camera.
@@ -725,8 +758,11 @@ function windowResized() {
 // Toggles fullscreen mode on mouse click
 function mousePressed() {
   userStartAudio(); // resume AudioContext on interaction
-  if (!fullscreen()) fullscreen(true);
-  else fullscreen(false);
+  if (DEBUG.demo) return;      // an embedded demo stays in its frame
+  try {
+    if (!fullscreen()) fullscreen(true);
+    else fullscreen(false);
+  } catch (e) { /* fullscreen is not available everywhere */ }
 }
 
 // Keyboard controls: M=mute, R=rain, S=sunny, T=storm,
