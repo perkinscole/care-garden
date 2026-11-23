@@ -7,8 +7,10 @@
 //   decorations. Tracks smile hold durations, then draws everything
 //   that sits on top of the live video in pixel art: friendly corner
 //   brackets and a smile meter around each face, the countdown badge,
-//   and (during Hat Time) hats, crowns, horns and other accessories
-//   from js/art/hats_art.js, enlarged by whole numbers to fit each head.
+//   a prompt that tells a newcomer what to do ("Smile to grow a
+//   flower!"), and (during Hat Time) hats, crowns, horns and other
+//   accessories from js/art/hats_art.js, enlarged by whole numbers to
+//   fit each head. Everything is clipped to the video rectangle.
 // ================================================================
 
 // ── Face Detection ───────────────────────────────────
@@ -116,47 +118,127 @@ function facesAreStale() {
   return lastFaceUpdate > 0 && millis() - lastFaceUpdate > 2000;
 }
 
+// ── Drawing inside the video ─────────────────────────
+
+// Everything drawn over the camera picture is clipped to the video
+// rectangle, so a hat on someone standing tall cannot poke up into the
+// garden and a bracket at the edge cannot spill onto the side panels.
+function videoClipBegin() {
+  const c = PX.c;
+  c.save();
+  c.beginPath();
+  c.rect(videoArt.x, videoArt.y, videoArt.w, videoArt.h);
+  c.clip();
+}
+function videoClipEnd() { PX.c.restore(); }
+
 // ── Face boxes ───────────────────────────────────────
 
 // Draws pixel corner brackets around each detected face and a small smile
 // meter under the chin. White = "we see you", yellow = smiling (the meter
-// fills while the smile is held), green = photo taken.
+// fills while the smile is held), green = photo taken. Also draws the
+// prompt for newcomers, and decides where each countdown badge will go.
 function drawBoxes(detections) {
-  if (!detections || detections.length === 0 || !videoW || !videoH || !videoArt.w) return;
+  if (!videoW || !videoH || !videoArt.w) return;
   // Don't draw boxes for stale detections (detection loop stalled)
-  if (facesAreStale()) return;
+  const n = (detections && !facesAreStale()) ? detections.length : 0;
 
-  for (let f = 0; f < detections.length; f++) {
-    const det  = detections[f];
-    const r    = faceToArt(det.alignedRect._box, _faceRect);
-    const data = det._smileKey ? faceSmileData[det._smileKey] : null;
-
-    // Whole art pixels, remembered per face so the brackets hold still
-    let x, y, w, bh;
-    if (data) {
-      x  = data.boxX = stickyRound(data.boxX, r.x);
-      y  = data.boxY = stickyRound(data.boxY, r.y);
-      w  = data.boxW = stickyRound(data.boxW, r.w);
-      bh = data.boxH = stickyRound(data.boxH, r.h);
-    } else {
-      x = Math.round(r.x); y = Math.round(r.y); w = Math.round(r.w); bh = Math.round(r.h);
+  videoClipBegin();
+  try {
+    // First pass: whole-pixel boxes, remembered per face so the brackets
+    // hold still. Faces are kept in faceBoxes for the passes that follow.
+    while (faceBoxes.length < n) faceBoxes.push({ x: 0, y: 0, w: 0, h: 0, data: null, det: null });
+    for (let f = 0; f < n; f++) {
+      const det  = detections[f];
+      const r    = faceToArt(det.alignedRect._box, _faceRect);
+      const data = det._smileKey ? faceSmileData[det._smileKey] : null;
+      const fb = faceBoxes[f];
+      fb.det = det; fb.data = data || null;
+      if (data) {
+        fb.x = data.boxX = stickyRound(data.boxX, r.x);
+        fb.y = data.boxY = stickyRound(data.boxY, r.y);
+        fb.w = data.boxW = stickyRound(data.boxW, r.w);
+        fb.h = data.boxH = stickyRound(data.boxH, r.h);
+      } else {
+        fb.x = Math.round(r.x); fb.y = Math.round(r.y); fb.w = Math.round(r.w); fb.h = Math.round(r.h);
+      }
     }
 
-    const smiling = det.expressions.happy > 0.75;
-    const snapped = !!(data && data.snapped);
-    const held    = data ? Math.min(data.frames, SMILE_HOLD_REQUIRED) : 0;
+    drawCameraPrompt(n);
+    for (let f = 0; f < n; f++) placeCountdownBadge(f, n);
 
-    let col = PAL.white, icon = 'wait', filled = 0;
-    if (snapped)      { col = PAL.gr1; icon = 'done';  filled = SMILE_HOLD_REQUIRED; }
-    else if (smiling) { col = PAL.ye2; icon = 'smile'; filled = held; }
+    for (let f = 0; f < n; f++) {
+      const fb = faceBoxes[f], det = fb.det, data = fb.data;
+      const x = fb.x, y = fb.y, w = fb.w, bh = fb.h;
 
-    // The brackets breathe out by one pixel while a smile is charging up
-    const grow = (smiling && !snapped) ? PX.anim(2, 8) : 0;
-    drawFaceBrackets(x - grow, y - grow, w + grow * 2, bh + grow * 2, col);
-    drawSmileMeter(x + Math.floor(w / 2), Math.min(y + bh + 3, PX.SH - 8), w, icon, filled, snapped);
-  }
+      const smiling = det.expressions.happy > 0.75;
+      const snapped = !!(data && data.snapped);
+      const held    = data ? Math.min(data.frames, SMILE_HOLD_REQUIRED) : 0;
+
+      let col = PAL.white, icon = 'wait', filled = 0;
+      if (snapped)      { col = PAL.gr1; icon = 'done';  filled = SMILE_HOLD_REQUIRED; }
+      else if (smiling) { col = PAL.ye2; icon = 'smile'; filled = held; }
+
+      // The brackets breathe out by one pixel while a smile is charging up
+      const grow = (smiling && !snapped) ? PX.anim(2, 8) : 0;
+      drawFaceBrackets(x - grow, y - grow, w + grow * 2, bh + grow * 2, col);
+      // The meter sits under the chin, unless the countdown badge has had
+      // to go there because there are faces on both sides
+      const badgeUnder = data && data.badgeAt === frameCount && data.badgeSide === 2;
+      if (!badgeUnder) {
+        drawSmileMeter(x + Math.floor(w / 2), Math.min(y + bh + 3, videoArt.y + videoArt.h - 8), w, icon, filled, snapped);
+      }
+    }
+  } finally { videoClipEnd(); }
 }
 drawBoxes.pixel = true;
+
+// This frame's faces in art pixels (reused every frame, never reallocated)
+const faceBoxes = [];
+
+// True if the rectangle (x, y, w, h) touches the box of any face other than
+// `self`, grown by `pad` pixels all round.
+function touchesOtherFace(x, y, w, h, self, n, pad) {
+  for (let i = 0; i < n; i++) {
+    if (i === self) continue;
+    const o = faceBoxes[i];
+    if (x < o.x + o.w + pad && x + w > o.x - pad && y < o.y + o.h + pad && y + h > o.y - pad) return true;
+  }
+  return false;
+}
+
+// Decides where the countdown badge of face `f` goes and remembers it on
+// the face (badgeX, badgeY, badgeSide) for drawCountdown, which runs later
+// in the frame. Sides, in order of preference: 0 beside the right cheek,
+// 1 beside the left cheek, 2 under the chin in place of the smile meter.
+// A side is no good if the badge would leave the video or sit on top of a
+// neighbour, so two friends shoulder to shoulder each keep their own badge.
+function placeCountdownBadge(f, n) {
+  const fb = faceBoxes[f], data = fb.data;
+  if (!data) return;
+  data.badgeAt = -1;
+  if (data.frames <= 0 || data.snapped) { data.badgeSide = undefined; return; }
+  const v = videoArt, R = 7;
+  const midY = Math.max(v.y + R + 1, Math.min(v.y + v.h - R - 2, fb.y + Math.floor(fb.h / 2)));
+  let side = -1, bx = 0, by = 0;
+  // Try the side used last frame first so the badge does not hop about
+  for (let t = -1; t < 3 && side < 0; t++) {
+    const s = t < 0 ? data.badgeSide : t;
+    if (s === undefined || (t >= 0 && s === data.badgeSide)) continue;
+    if (s === 0)      { bx = fb.x + fb.w + 9; by = midY; }
+    else if (s === 1) { bx = fb.x - 10;       by = midY; }
+    else {
+      bx = Math.max(v.x + R + 1, Math.min(v.x + v.w - R - 2, fb.x + Math.floor(fb.w / 2)));
+      by = Math.min(fb.y + fb.h + 3 + R, v.y + v.h - R - 2);
+    }
+    const inside = bx - R >= v.x + 1 && bx + R <= v.x + v.w - 2;
+    if (s === 2 || (inside && !touchesOtherFace(bx - R, by - R, R * 2 + 1, R * 2 + 1, f, n, 2))) side = s;
+  }
+  data.badgeSide = side;
+  data.badgeX = bx;
+  data.badgeY = by;
+  data.badgeAt = frameCount;
+}
 
 // Four soft corner brackets around the rectangle (x, y, w, h)
 function drawFaceBrackets(x, y, w, h, col) {
@@ -221,7 +303,8 @@ const COUNTDOWN_DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 // Draws a round badge beside each smiling face: a ring that fills as the
 // smile is held, with the number of frames still to go in the middle
-// (a tick once the smile has been held long enough).
+// (a tick once the smile has been held long enough). Where it goes was
+// decided by placeCountdownBadge() when the brackets were drawn.
 function drawCountdown() {
   if (!videoW || !videoH || !videoArt.w) return;
   if (facesAreStale()) return;
@@ -232,21 +315,11 @@ function drawCountdown() {
     const data = faceSmileData[key];
     const frames = data.frames;
     if (frames <= 0 || data.snapped) continue;
+    if (data.badgeAt !== frameCount) continue;      // not placed this frame (no video yet)
 
     const progress    = min(frames / SMILE_HOLD_REQUIRED, 1.0);
     const secondsLeft = ceil((SMILE_HOLD_REQUIRED - frames));
-
-    // Same whole-pixel box the brackets use, so the badge moves with them
-    const r = faceToArt(detections[i].alignedRect._box, _faceRect);
-    const x  = data.boxX !== undefined ? data.boxX : Math.round(r.x);
-    const y  = data.boxY !== undefined ? data.boxY : Math.round(r.y);
-    const w  = data.boxW !== undefined ? data.boxW : Math.round(r.w);
-    const bh = data.boxH !== undefined ? data.boxH : Math.round(r.h);
-
-    // Beside the cheek, clear of the hat; flips to the other side at the edge of the video
-    let bx = x + w + 9;
-    if (bx + 8 > videoArt.x + videoArt.w) bx = x - 10;
-    const by = y + Math.floor(bh / 2);
+    const bx = data.badgeX, by = data.badgeY;
 
     PX.circle(bx, by, 7, PAL.ink);
     PX.circle(bx, by, 5, PAL.g5);
@@ -262,6 +335,134 @@ function drawCountdown() {
   }
 }
 drawCountdown.pixel = true;
+
+// ── Prompt for newcomers ─────────────────────────────
+
+// A small sign inside the video that says what to do next, so that someone
+// walking up understands the garden within a couple of seconds:
+//   nobody in view            "Step up and smile / to grow a flower!"
+//   a face, not smiling       "Smile to grow / a flower!"
+//   a smile being held        "Hold that smile..."
+//   photo just taken          "Planted! Look up!"
+// Each state lists its wordings from best to shortest as [line 1, line 2];
+// the first that fits the video and stays clear of every face is used.
+const PROMPT_TEXTS = {
+  none: [['Step up and smile', 'to grow a flower!'], ['Smile to grow', 'a flower!'], ['Smile for a flower!', ''], ['Smile!', '']],
+  seen: [['Smile to grow', 'a flower!'], ['Smile for a flower!', ''], ['Big smile!', ''], ['Smile!', '']],
+  hold: [['Hold that smile...', ''], ['Hold it...', '']],
+  done: [['Planted! Look up!', ''], ['Planted!', '']],
+};
+const PROMPT_COLORS = { none: PAL.white, seen: PAL.white, hold: PAL.ye2, done: PAL.gr1 };
+const PROMPT_TEXT_OPTS = {
+  none: { scale: 2, color: PAL.white }, seen: { scale: 2, color: PAL.white },
+  hold: { scale: 2, color: PAL.ye2 },   done: { scale: 2, color: PAL.gr1 },
+};
+// What is showing now. A new state has to last a few frames before the
+// sign changes, so it does not flicker when a smile comes and goes.
+const promptNow = { state: 'none', want: 'none', wantSince: 0, choice: -1, top: false, lastSnap: 0, snapAt: -1e9 };
+const _promptRect = { x: 0, y: 0, w: 0, h: 0 };
+
+// Which of the four states the people in view are in
+function cameraPromptState(n) {
+  let holding = false, snapped = false;
+  for (let f = 0; f < n; f++) {
+    const fb = faceBoxes[f], data = fb.data;
+    if (!data) continue;
+    if (data.snapped) snapped = true;
+    else if (data.frames > 0 && fb.det.expressions.happy > 0.75) holding = true;
+  }
+  // "Planted!" stays up for a few seconds after a photo, and for as long as
+  // the people who were photographed keep beaming at the camera
+  if (lastSnapTime !== promptNow.lastSnap) {
+    promptNow.lastSnap = lastSnapTime;
+    if (snapped) promptNow.snapAt = millis();
+  }
+  if (holding) return 'hold';
+  if (snapped || (n > 0 && millis() - promptNow.snapAt < 2500)) return 'done';
+  return n > 0 ? 'seen' : 'none';
+}
+
+// Works out the rectangle of one wording at the bottom or top of the video
+// into _promptRect; returns false if the video is too narrow for it.
+function promptRect(lines, top) {
+  const v = videoArt;
+  const two = !!lines[1];
+  const tw = Math.max(PX.measure(lines[0], 'small', 2), two ? PX.measure(lines[1], 'small', 2) : 0) - 2;
+  const w = tw + 14 + 4 + 8;                     // icon, gap, padding
+  const h = two ? 31 : 18;
+  if (w > v.w - 4 || h > v.h * 0.4) return false;
+  _promptRect.w = w; _promptRect.h = h;
+  _promptRect.x = v.x + Math.floor((v.w - w) / 2);
+  _promptRect.y = top ? v.y + 3 : v.y + v.h - h - 3;
+  return true;
+}
+
+// True if the sign would cover part of a face, its hat or its smile meter
+function promptHitsFace(n) {
+  const r = _promptRect;
+  for (let f = 0; f < n; f++) {
+    const fb = faceBoxes[f];
+    const above = (hatTimeActive && decorationsEnabled) ? Math.round(fb.w * 0.9) : Math.round(fb.w * 0.25);
+    // Below the chin: the smile meter, or the countdown badge when it sits there
+    const below = (fb.data && fb.data.badgeSide === 2) ? 20 : 13;
+    if (r.x < fb.x + fb.w + 4 && r.x + r.w > fb.x - 4 &&
+        r.y < fb.y + fb.h + below && r.y + r.h > fb.y - above) return true;
+  }
+  return false;
+}
+
+// Draws the sign. `n` is the number of faces in faceBoxes this frame.
+function drawCameraPrompt(n) {
+  const P = promptNow;
+  const want = cameraPromptState(n);
+  if (want !== P.want) { P.want = want; P.wantSince = frameCount; }
+  if (P.state !== P.want && (frameCount - P.wantSince >= 6 || P.want === 'done')) { P.state = P.want; P.choice = -1; }
+  const texts = PROMPT_TEXTS[P.state];
+
+  // Keep the wording and place used last frame while they still work;
+  // otherwise look again: bottom then top for each wording in turn.
+  let ok = P.choice >= 0 && P.choice < texts.length && promptRect(texts[P.choice], P.top) && !promptHitsFace(n);
+  if (!ok) {
+    for (let c = 0; c < texts.length && !ok; c++) {
+      for (let t = 0; t < 2 && !ok; t++) {
+        if (promptRect(texts[c], t === 1) && !promptHitsFace(n)) { ok = true; P.choice = c; P.top = t === 1; }
+      }
+    }
+  }
+  if (!ok) {
+    // Faces everywhere: the shortest wording along the bottom edge
+    P.choice = texts.length - 1; P.top = false;
+    if (!promptRect(texts[P.choice], false)) return;
+  }
+
+  const r = _promptRect, lines = texts[P.choice];
+  const col = PROMPT_COLORS[P.state];
+  PX.panel(r.x, r.y, r.w, r.h, PAL.sk8, PAL.ink, 2);
+  PX.rect(r.x + 2, r.y + 1, r.w - 4, 1, PAL.sk6);          // lit top edge
+
+  // A double-size face that shows what to do: it breaks into a smile every
+  // second while waiting, beams while a smile is held, and turns into a
+  // flower once the photo is taken
+  let icon = 'smile';
+  if (P.state === 'done') icon = 'done';
+  else if (P.state !== 'hold') icon = PX.anim(2, 30) ? 'smile' : 'wait';
+  const iy = r.y + Math.floor((r.h - 14) / 2) - ((P.state === 'hold' && PX.anim(2, 10)) ? 1 : 0);
+  const c = PX.c;
+  c.save();
+  c.translate(r.x + 4, iy);
+  c.scale(2, 2);
+  PX.spr('smile_icon', 0, 0, SMILE_ICON_FRAMES[icon]);
+  c.restore();
+
+  const tx = r.x + 4 + 14 + 4;
+  const opts = PROMPT_TEXT_OPTS[P.state];
+  if (lines[1]) {
+    PX.text(lines[0], tx, r.y + 1, opts);
+    PX.text(lines[1], tx, r.y + 14, opts);
+  } else {
+    PX.text(lines[0], tx, r.y + 0, opts);
+  }
+}
 
 // ── Face Decorations ────────────────────────────────
 
@@ -323,6 +524,14 @@ function drawFaceDecorations(detections) {
   // Don't draw hats on stale faces (detection loop stalled — avoids frozen hats on screen)
   if (facesAreStale()) return;
 
+  // Hats are clipped to the video: one worn by someone at the top of the
+  // picture is cut off at the edge instead of poking up into the garden
+  videoClipBegin();
+  try { drawDecorationsClipped(detections); } finally { videoClipEnd(); }
+}
+drawFaceDecorations.pixel = true;
+
+function drawDecorationsClipped(detections) {
   for (let i = 0; i < detections.length; i++) {
     const key = detections[i]._smileKey;
     if (!key || !faceSmileData[key]) continue;
@@ -372,4 +581,3 @@ function drawFaceDecorations(detections) {
     PX.c.drawImage(spr.frames[frame % spr.frames.length].cv, dx, dy, spr.w * k, spr.h * k);
   }
 }
-drawFaceDecorations.pixel = true;

@@ -123,8 +123,9 @@ function statsSetByHand() {
 }
 
 // Loads smile statistics. localStorage is shown immediately, then the server's
-// copy (stats.json) replaces it as soon as it arrives. The request runs in the
-// background so a slow server can never freeze the garden at startup.
+// copy (stats.json) is merged with it as soon as it arrives: each day keeps
+// the larger of the two counts. The request runs in the background so a slow
+// server can never freeze the garden at startup.
 function loadSmileStats() {
   const local = readLocalStats();
   statsHadLocal = !!local;
@@ -147,24 +148,88 @@ function loadSmileStats() {
   } catch (e) { finishStatsLoad(null); }
 }
 
+// Combines two copies of the stats (the server's stats.json and this
+// browser's localStorage) into one. Each day keeps the LARGER of its two
+// counts: counts only ever go up, so the larger one is the copy that saw
+// more smiles. This is what stops smiles being lost when a save to the
+// server failed and the page was reloaded before the next one got through.
+//
+// Note for whoever looks after the kiosk: because the larger count wins,
+// resetting a day (or the record) by hand means clearing BOTH copies:
+// edit or delete stats.json next to server.py AND clear this page's
+// localStorage (the "careGardenStats" entry) in the browser. Clear only
+// one and the other puts the numbers straight back.
+function mergeStats(a, b) {
+  const out = { dailyCounts: {}, record: 0, recordDate: '' };
+  for (const src of [a, b]) {
+    if (!src || typeof src !== 'object') continue;
+    const dc = src.dailyCounts;
+    if (dc && typeof dc === 'object') {
+      for (const day in dc) {
+        const n = Math.floor(Number(dc[day]));
+        if (isFinite(n) && n >= (out.dailyCounts[day] || 0)) out.dailyCounts[day] = n;
+      }
+    }
+    // A stored record can be for a day that has since been pruned from the
+    // list, so it is carried over as well as being checked against the days
+    const rec = Math.floor(Number(src.record));
+    if (isFinite(rec) && rec > out.record) { out.record = rec; out.recordDate = src.recordDate || ''; }
+  }
+  // Keep the record in step with the merged counts: a merged day can beat
+  // both stored records (or match one that never had its date written down)
+  for (const day of Object.keys(out.dailyCounts).sort()) {
+    const n = out.dailyCounts[day];
+    if (n > out.record || (n > 0 && n === out.record && !out.recordDate)) { out.record = n; out.recordDate = day; }
+  }
+  const keys = Object.keys(out.dailyCounts).sort();
+  while (keys.length > 14) delete out.dailyCounts[keys.shift()];   // last 14 days, as in addSmilesToData
+  return out;
+}
+
+// True when two stats objects hold the same numbers
+function sameStats(a, b) {
+  if ((a.record || 0) !== (b.record || 0) || (a.recordDate || '') !== (b.recordDate || '')) return false;
+  const da = a.dailyCounts || {}, db = b.dailyCounts || {};
+  if (Object.keys(da).length !== Object.keys(db).length) return false;
+  for (const k in da) if (da[k] !== db[k]) return false;
+  return true;
+}
+
 // Called once when the server has answered (data) or cannot be reached (null).
-// Smiles counted while waiting are added on top of the server's numbers so
-// none are lost, and only then is anything written back to the server.
+// The server's copy and the browser's copy are merged day by day (see
+// mergeStats), smiles counted while waiting are added on top so none are
+// lost, and only then is anything written back to the server.
 function finishStatsLoad(serverData) {
   if (!statsLoading) return;
   statsLoading = false;
   clearTimeout(statsLoadTimer);
   const added = statsAddedWhileLoading;
   statsAddedWhileLoading = 0;
+  const local = readLocalStats() || statsCache;
 
   if (serverData) {
-    if (added > 0) addSmilesToData(serverData, added);
-    writeLocalStats(serverData);
-    if (!statsSetByHand()) applyStatsData(serverData);
-    if (added > 0) postStats(serverData);
+    // saveSmileStats() has already put the smiles counted while waiting into
+    // the local copy. They are taken out again before the two copies are
+    // compared and then added to whichever count wins, so they are counted
+    // exactly once whether the server or the browser was ahead.
+    let before = local;
+    if (local && added > 0) {
+      const today = getTodayKey();
+      const setToday = local.recordDate === today;     // a record made today is worked out again below
+      before = {
+        dailyCounts: Object.assign({}, local.dailyCounts),
+        record: setToday ? 0 : local.record, recordDate: setToday ? '' : local.recordDate,
+      };
+      before.dailyCounts[today] = Math.max(0, (before.dailyCounts[today] || 0) - added);
+    }
+    const merged = mergeStats(serverData, before);
+    if (added > 0) addSmilesToData(merged, added);
+    writeLocalStats(merged);
+    if (!statsSetByHand()) applyStatsData(merged);
+    // Send it back if this browser knew about smiles the server did not
+    if (!sameStats(merged, mergeStats(serverData, null))) postStats(merged);
   } else if (added > 0) {
     // No server copy to merge with: send what localStorage has, as before
-    const local = readLocalStats() || statsCache;
     if (local) postStats(local);
   }
 }
@@ -367,6 +432,8 @@ function drawDottedRule(x, y, w, col) {
 const BUBBLE_WRAP_W = 110;   // text wraps at this many art pixels
 const BUBBLE_LINE_H = 7;
 const BUBBLE_TAIL   = 3;     // rows of tail below (or above) the bubble
+// The corner kept clear for the forecast panel: 82x49 with a 4px margin, plus a gap
+const FORECAST_KEEP_W = 89, FORECAST_KEEP_H = 55;
 
 // Floating speech bubble that fades in, drifts upward, then fades out above a character.
 // getPos() returns art pixels { x, y } for the point just above the speaker's
@@ -386,6 +453,9 @@ class SpeechBubble {
     this.lines  = null;
     this.cv     = null;   // the bubble, painted once so it can fade as one piece
     this.cvKey  = '';
+    this.lift   = 0;      // extra rise (art pixels) to keep clear of a neighbour's bubble
+    this.rx = 0; this.ry = 0; this.rw = 0; this.rh = 0;   // where it was last drawn
+    this.rectAt = -1;     // and on which frame
   }
 
   // Advances age, updates float offset and alpha transparency; returns false when expired
@@ -461,12 +531,36 @@ class SpeechBubble {
     if (below) top = baseY + T + rise;
     else       top = Math.max(1, baseY - T - H - rise);
 
-    const left  = Math.max(1, Math.min(PX.W - 1 - W, tipX - Math.floor(W / 2)));
+    let left = Math.max(1, Math.min(PX.W - 1 - W, tipX - Math.floor(W / 2)));
+    // The weather forecast panel (js/weather.js) sits in the top right
+    // corner and is drawn over the bubbles: slide along to stay beside it
+    if (top < FORECAST_KEEP_H && left + W > PX.W - FORECAST_KEEP_W) left = Math.max(1, PX.W - FORECAST_KEEP_W - W);
     const tailX = Math.max(4, Math.min(W - 5, tipX - left));
     this.paint(tailX, below);
 
+    // Two neighbours talking at once: if this bubble would cover one that
+    // has already been drawn this frame, it is lifted to sit just above it
+    // (or dropped just under it when there is no room above). The lift is
+    // eased in so the bubble glides rather than jumps.
+    let want = 0;
+    for (const o of speechBubbles) {
+      if (o === this) break;                       // only bubbles drawn before this one
+      if (o.rectAt !== frameCount) continue;
+      const t = top + want;
+      if (left < o.rx + o.rw + 1 && left + W + 1 > o.rx && t < o.ry + o.rh + 1 && t + H + T + 1 > o.ry) {
+        const up = o.ry - (H + T + 1) - top;
+        want = (top + up >= 1) ? up : (o.ry + o.rh + 1) - top;
+      }
+    }
+    this.lift += (want - this.lift) * 0.25;
+    if (Math.abs(want - this.lift) < 0.5) this.lift = want;
+    top = Math.max(1, Math.min(PX.H - H - T - 1, top + Math.round(this.lift)));
+    this.rx = left; this.ry = top; this.rw = W; this.rh = H + T; this.rectAt = frameCount;
+
     const c = PX.c, prev = c.globalAlpha;
-    c.globalAlpha = prev * constrain(this.alpha / 255, 0, 1);
+    // Bubbles are drawn after the night tint, so at night they are let
+    // through a little: full white would glare against the dark garden
+    c.globalAlpha = prev * constrain(this.alpha / 255, 0, 1) * (1 - 0.14 * nightAmount());
     c.drawImage(this.cv, left, below ? top - T : top);
     c.globalAlpha = prev;
   }
@@ -631,13 +725,16 @@ function drawPolaroid(x, y, p, photo, markPal, lip, caption) {
   });
 }
 
-// Shown until the first smile of the day: a camera and a friendly prompt
+// Shown until the first smile of the day: a camera and a friendly prompt,
+// both lines at double size when the panel has the room
 function drawGalleryEmpty(x, y, w, h) {
   const cx = x + Math.floor(w / 2);
   const big = uiTextW('Smile and hold!', 'small', 2) <= w - 4 ? 2 : 1;
-  const lines = PX.wrap('Your photo grows a flower.', w - 4, 'small');
+  const sub = (big === 2 && uiTextW('Your photo grows a flower.', 'small', 2) <= w - 4) ? 2 : 1;
+  const lines = PX.wrap('Your photo grows a flower.', w - 4, 'small', sub);
+  const subLh = sub === 2 ? 13 : 7;
   const showHint = uiTextW('Smile and hold!', 'small') <= w;
-  const textH = 5 * big + 5 + lines.length * 7 - 2;
+  const textH = 5 * big + 6 + lines.length * subLh - (subLh - 5 * sub);
   const camera = w >= 28 && h >= textH + 26;
   let ty = y + Math.floor((h - textH - (camera ? 24 : 0)) / 2);
   if (camera) {
@@ -647,11 +744,11 @@ function drawGalleryEmpty(x, y, w, h) {
   }
   if (!showHint || h < 5) return;
   uiText('Smile and hold!', cx, ty, { scale: big, color: PAL.ye1, align: 'center', shadow: PAL.sk7 });
-  ty += 5 * big + 5;
+  ty += 5 * big + 6;
   for (let i = 0; i < lines.length; i++) {
-    if (ty + 5 > y + h) break;
-    uiText(lines[i], cx, ty, { color: PAL.sk2, align: 'center' });
-    ty += 7;
+    if (ty + 5 * sub > y + h) break;
+    uiText(lines[i], cx, ty, { scale: sub, color: PAL.sk2, align: 'center' });
+    ty += subLh;
   }
 }
 
@@ -740,6 +837,82 @@ function cardTones(card) {
   return tn;
 }
 
+// Body text at double size needs a column at least this wide (art pixels),
+// or the lines come out only two or three words long
+const CARD_BIG_MIN_W = 128;
+const CARD_BIG_LH = 13;          // line height of double-size body text
+const CARD_MAX_PAGES = 3;        // a card is on screen for PANEL_CYCLE_DURATION; more pages would flick past
+
+// Splits a card's body into pages of at most `per` lines of double-size
+// text `w` pixels wide. Pages end at the end of a sentence where they can,
+// failing that after a comma or dash, and only as a last resort mid-phrase.
+// Returns an array of pages (each an array of lines), or null if a word is
+// too long for the column. Runs once per card layout, not every frame.
+function paginateCardBody(body, w, per) {
+  const wrap = str => PX.wrap(str, w, 'small', 2);
+  const all = wrap(body);
+  for (const ln of all) if (uiTextW(ln, 'small', 2) > w) return null;
+  if (all.length <= per) return [all];
+  const plain = [];
+  for (let i = 0; i < all.length; i += per) plain.push(all.slice(i, i + per));
+  if (body.indexOf('\n') >= 0) return plain;
+
+  // Sentences (titles such as "Mr." stay attached to the name after them),
+  // each cut into phrases after its commas and dashes
+  const sentences = [];
+  for (const part of PX._clean(body).split(/(?<=[.!?])\s+/)) {
+    const n = sentences.length;
+    if (n && /\b(Mr|Mrs|Ms|Dr)\.$/.test(sentences[n - 1])) sentences[n - 1] += ' ' + part;
+    else sentences.push(part);
+  }
+  const units = [];
+  for (const sen of sentences) {
+    const phrases = sen.split(/(?<=[,;:])\s+|(?<=\s-)\s+/);
+    phrases.forEach((text, i) => units.push({ text, end: i === phrases.length - 1 }));
+  }
+
+  // best[i] = the cheapest way to lay out units i.. as pages. A page costs
+  // 1000, ending one in the middle of a sentence 150 more, and a page that
+  // is not the last pays for the lines it leaves empty.
+  const n = units.length, best = new Array(n + 1).fill(null);
+  best[n] = { cost: 0, next: -1, lines: null };
+  for (let i = n - 1; i >= 0; i--) {
+    let text = '';
+    for (let j = i; j < n; j++) {
+      text = text ? text + ' ' + units[j].text : units[j].text;
+      const lines = wrap(text);
+      if (lines.length > per) break;
+      if (!best[j + 1]) continue;
+      const spare = j + 1 < n ? per - lines.length : 0;
+      const cost = 1000 + (units[j].end ? 0 : 150) + spare * spare + best[j + 1].cost;
+      if (!best[i] || cost < best[i].cost) best[i] = { cost, next: j + 1, lines };
+    }
+  }
+  if (!best[0]) return plain;
+  const pages = [];
+  for (let i = 0; i < n; i = best[i].next) pages.push(best[i].lines);
+  return pages.length <= Math.max(plain.length, CARD_MAX_PAGES) ? pages : plain;
+}
+
+// Which page of a paged card is showing now. Pages share the card's time on
+// screen in proportion to how much there is to read on each. With ?panel=
+// (the card held still for testing) the pages keep turning on the clock,
+// or ?page=2 holds one of them.
+function cardPageIndex(L) {
+  const n = L.pages.length;
+  if (n < 2) return 0;
+  if (typeof DEBUG !== 'undefined' && DEBUG.q && DEBUG.q.has('page')) {
+    return constrain((parseInt(DEBUG.q.get('page')) || 1) - 1, 0, n - 1);
+  }
+  let el = millis() - panelModeTimer;
+  if (!isFinite(el)) el = millis() % PANEL_CYCLE_DURATION;
+  const frac = el / PANEL_CYCLE_DURATION;
+  for (let i = 0; i < n - 1; i++) if (frac < L.pageEnds[i]) return i;
+  return n - 1;
+}
+// The page last drawn, so a new page can fade in
+const cardPageShown = { id: '', page: -1, since: 0 };
+
 // Works out where everything on a card goes for a panel interior I.
 // Wide panels put the art window on the left and the words on the right;
 // narrow ones stack them. The art is enlarged by the biggest whole number
@@ -773,8 +946,45 @@ function layoutCard(I, card, box) {
   L.bodyScale = 1;
   L.center = false;
   L.pillBelow = false;
+  L.pages = null;
 
   if (L.wide) {
+    // First choice, for reading from across the room: the body at double
+    // size, turned a page at a time. Works when the art leaves a column
+    // wide enough for it (a single figure, the ram, the goose).
+    const paged = (k, winW) => {
+      const ground = Math.max(5 + 3 * k, box.b * k + 2 * k + 3);
+      const tw = I.w - 4 - winW - 5;
+      if (tw < CARD_BIG_MIN_W) return false;
+      if (box.t * k + 4 + ground > ch - 2) return false;
+      const titleLines = PX.wrap(card.title, tw - 6, 'small');
+      const pillH = titleLines.length * 7 + 4;
+      const per = Math.floor((ch - pillH - 5 + (CARD_BIG_LH - 10)) / CARD_BIG_LH);
+      if (per < 3) return false;
+      let pages = paginateCardBody(card.body, tw, per);
+      // More than one page: keep a gutter free on the right for the "more" arrow
+      if (pages && pages.length > 1) pages = paginateCardBody(card.body, tw - 7, per);
+      if (!pages || pages.length > CARD_MAX_PAGES) return false;
+      L.k = k; L.ground = ground;
+      L.win = { x: I.x + 2, y: cy0, w: winW, h: ch };
+      L.tx = I.x + 2 + winW + 5; L.tw = tw;
+      L.titleLines = titleLines; L.pillH = pillH; L.pillBelow = false;
+      L.pages = pages; L.bodyLines = pages[0]; L.bodyScale = 2; L.lh = CARD_BIG_LH;
+      // Time on screen for each page, by how much there is to read on it
+      let total = 0;
+      const weights = pages.map(pg => { let n = 0; for (const ln of pg) n += ln.length + 1; return n; });
+      for (const wgt of weights) total += wgt;
+      let acc = 0;
+      L.pageEnds = weights.map(wgt => (acc += Math.max(wgt, total * 0.22)));
+      for (let i = 0; i < L.pageEnds.length; i++) L.pageEnds[i] /= acc;
+      let most = 0;
+      for (const pg of pages) most = Math.max(most, pg.length);
+      const textH = pillH + 5 + most * CARD_BIG_LH - (CARD_BIG_LH - 10);
+      L.center = pages.length === 1;
+      L.ty = cy0 + (L.center ? Math.floor((ch - textH) / 2) : Math.min(6, Math.floor((ch - textH) / 2)));
+      return true;
+    };
+
     // Tries one arrangement: art enlarged k times in a window winW wide,
     // with the title pill above the body text, or under the window when
     // `pillBelow` is set (which leaves the whole column for the body).
@@ -806,6 +1016,7 @@ function layoutCard(I, card, box) {
       return true;
     };
     let done = false;
+    for (let k = 3; k >= 2 && !done; k--) done = paged(k, Math.max(bw * k + 8, 34));
     for (let k = 3; k >= 1 && !done; k--) done = attempt(k, Math.max(bw * k + 8, 34), false, false, false);
     // A very wide drawing (the school) on a narrower panel: move the title
     // under the picture, then trim the picture's edges, until every word
@@ -936,12 +1147,32 @@ function drawCharacterCard(x, y, w, h, card) {
     }
     if (!L.pillBelow) ty += L.pillH + (L.bodyScale === 2 ? 5 : 4);
   }
-  for (let i = 0; i < L.bodyLines.length; i++) {
-    const ln = L.bodyLines[i];
-    if (!ln) continue;
-    if (L.center) uiText(ln, cx, ty + i * L.lh, { scale: L.bodyScale, color: tn.soft, align: 'center' });
-    else          uiText(ln, L.tx, ty + i * L.lh, { scale: L.bodyScale, color: tn.soft });
+  let lines = L.bodyLines, fade = 1, more = false;
+  if (L.pages) {
+    const page = cardPageIndex(L);
+    if (cardPageShown.id !== card.id || cardPageShown.page !== page) {
+      // A new page fades in; the first page of a card arrives with the card
+      cardPageShown.since = (cardPageShown.id === card.id) ? frameCount : -100;
+      cardPageShown.id = card.id; cardPageShown.page = page;
+    }
+    fade = constrain((frameCount - cardPageShown.since) / 12, 0, 1);
+    lines = L.pages[page];
+    more = page < L.pages.length - 1;
   }
+  PX.alpha(fade, () => {
+    for (let i = 0; i < lines.length; i++) {
+      const ln = lines[i];
+      if (!ln) continue;
+      if (L.center) uiText(ln, cx, ty + i * L.lh, { scale: L.bodyScale, color: tn.soft, align: 'center' });
+      else          uiText(ln, L.tx, ty + i * L.lh, { scale: L.bodyScale, color: tn.soft });
+    }
+    // "There is more": a small arrow at the end of the last line, nodding
+    if (more) {
+      const ay = ty + (lines.length - 1) * L.lh + 2, ax = L.tx + L.tw - 5 + PX.anim(2, 20);
+      PX.rect(ax, ay, 1, 7, PAL.ye2); PX.rect(ax + 1, ay + 1, 1, 5, PAL.ye2);
+      PX.rect(ax + 2, ay + 2, 1, 3, PAL.ye2); PX.px(ax + 3, ay + 3, PAL.ye2);
+    }
+  });
 
   drawFrameVines(x, y, w, h, UI_FLOWER_WHITE, UI_FLOWER_YELLOW, 6);
   drawCycleIndicator(I, tn.rule, tn.rule);
@@ -1018,7 +1249,8 @@ function careModes(wordW) {
 function layoutCarePanel(I, digits) {
   const key = I.w + '|' + I.h + '|' + digits;
   if (uiCareLayout && uiCareLayout.key === key) return uiCareLayout;
-  const L = uiCareLayout = { key, s: 1, care: null, tagLines: null };
+  const L = uiCareLayout = { key, s: 1, care: null, tagLines: null, split: null };
+  if (layoutCareSplit(I, digits, L)) return L;
 
   const top = I.y + 15, bottom = I.y + I.h - 3;
   const H = bottom - top;
@@ -1082,6 +1314,55 @@ function layoutCarePanel(I, digits) {
   return L;
 }
 
+// The arrangement for a roomy panel, made to be read from across the room:
+// the number on the left, the four values listed on the right with their
+// words at double size, and the tagline at double size along the bottom.
+// Returns false (and leaves L alone) when the panel is too small for it;
+// layoutCarePanel then falls back to the stacked arrangements above.
+function layoutCareSplit(I, digits, L) {
+  const top = I.y + 15, bottom = I.y + I.h - 3, H = bottom - top;
+  let wordW = 0;
+  for (const v of CARE_VALUES) wordW = Math.max(wordW, uiTextW(v.word, 'small', 2));
+
+  // Tagline: double size on one or two lines if it fits, else normal size
+  const tags = [];
+  const t2 = PX.wrap(CARE_TAGLINE, I.w - 8, 'small', 2);
+  if (t2.length <= 2) tags.push({ lines: t2, scale: 2, lh: 13, h: t2.length * 13 - 3 });
+  const t1 = PX.wrap(CARE_TAGLINE, I.w - 12, 'small');
+  if (t1.length <= 2) tags.push({ lines: t1, scale: 1, lh: 7, h: t1.length * 7 - 2 });
+
+  for (const tag of tags) {
+    for (const b of [20, 13]) {                      // block size: big if there is the height
+      const ls = b >= 20 ? 2 : 1, rg = b >= 20 ? 3 : 2;
+      const listH = 4 * b + 3 * rg, listW = b + 4 + wordW;
+      const lw = I.w - 4 - listW - 6;                // width left over for the number
+      const room = H - 4 - tag.h;                    // height left over above the tagline
+      if (lw < 56 || listH > room) continue;
+      for (let s = 6; s >= 3; s--) {
+        const nw = digits * 8 * s - s, drop = Math.max(1, s >> 1);
+        let leftH = 10 + 4 + 7 * s + drop;           // double-size label, gap, number
+        if (nw + drop > lw || leftH > room) continue;
+        let dots = 'none';
+        if (nw + 2 * (drop + 4 + 3) <= lw) dots = 'beside';
+        else if (leftH + 3 + 3 <= room) { dots = 'below'; leftH += 6; }
+        const contentH = Math.max(listH, leftH);
+        const pad = Math.floor((H - contentH - tag.h) / 3);
+        const y0 = top + Math.min(pad, 8);
+        L.s = s;
+        L.tagLines = tag.lines;
+        L.split = {
+          b, ls, rg, tag, dots, lw,
+          leftX: I.x + 2, leftY: y0 + Math.floor((contentH - leftH) / 2),
+          listX: I.x + I.w - 2 - listW, listY: y0 + Math.floor((contentH - listH) / 2),
+          tagY: bottom - tag.h - Math.min(pad, 4),
+        };
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // One raised colour block with its letter
 function drawCareBlock(x, y, v, b, ls) {
   PX.panel(x, y, b, b, v.fill, PAL.ink, 1);
@@ -1114,6 +1395,86 @@ function drawCareValues(cx, y, mode) {
   }
 }
 
+// The big number: two-tone digits with a drop shadow. While someone is
+// smiling (`beat` flips on and off) it bounces a pixel and flashes.
+function drawCareNumber(str, nx, y, s, col, beat) {
+  const nw = uiTextW(str, 'bold', s);
+  const ny = y - (beat ? 1 : 0);
+  const drop = Math.max(1, Math.floor(s / 2));
+  uiText(str, nx + drop, ny + drop, { font: 'bold', scale: s, color: col.shade });
+  uiText(str, nx, ny, { font: 'bold', scale: s, color: beat ? col.top : col.main });
+  uiClip(nx - 1, ny, nw + 2, 3 * s, () => {
+    uiText(str, nx, ny, { font: 'bold', scale: s, color: beat ? col.flash : col.top });
+  });
+}
+
+// Labels for the three stats at double size, longest first; the first that
+// fits beside the list of values is used. '%' stands for a day's name.
+const CARE_SPLIT_LABELS = [
+  ["%'S SMILES", 'SMILES TODAY', 'TODAY'],
+  ['SMILES THIS WEEK', 'THIS WEEK', 'WEEK'],
+  ['RECORD: %', 'RECORD DAY', 'RECORD'],
+];
+let uiCareRecordDay = '';      // weekday of the record, in capitals ('' if unknown)
+let uiCareLabelKey = '', uiCareLabelText = '', uiCareLabelScale = 2;
+
+// Draws the split arrangement worked out by layoutCareSplit()
+function drawCareSplit(I, L, idx, str, col, beat) {
+  const P = L.split, s = L.s;
+  const cxL = P.leftX + Math.floor(P.lw / 2);
+  const drop = Math.max(1, Math.floor(s / 2));
+
+  // Label over the number, as big as fits (chosen again only when it changes)
+  const day = idx === 0 ? CARE_DAY_NAMES[new Date().getDay()].toUpperCase() : (idx === 2 ? uiCareRecordDay : '');
+  const key = idx + '|' + day + '|' + P.lw;
+  if (key !== uiCareLabelKey) {
+    uiCareLabelKey = key; uiCareLabelText = ''; uiCareLabelScale = 2;
+    for (const sc of [2, 1]) {
+      for (const t of CARE_SPLIT_LABELS[idx]) {
+        if (t.indexOf('%') >= 0 && !day) continue;
+        const text = t.replace('%', day);
+        if (uiTextW(text, 'small', sc) <= P.lw) { uiCareLabelText = text; uiCareLabelScale = sc; break; }
+      }
+      if (uiCareLabelText) break;
+    }
+  }
+  if (uiCareLabelText) {
+    uiText(uiCareLabelText, cxL, P.leftY + (uiCareLabelScale === 2 ? 0 : 3),
+      { scale: uiCareLabelScale, color: PAL.sk2, align: 'center', shadow: PAL.sk7 });
+  }
+
+  const nw = uiTextW(str, 'bold', s);
+  const nx = cxL - Math.floor((nw + drop) / 2), ny = P.leftY + 14;
+  drawCareNumber(str, nx, ny, s, col, beat);
+  for (let i = 0; i < 3 && P.dots !== 'none'; i++) {
+    const dc = i === idx ? col.main : UI_RULE;
+    if (P.dots === 'beside') PX.rect(nx + nw + drop + 4, ny + Math.floor((7 * s - 15) / 2) + i * 6, 3, 3, dc);
+    else                     PX.rect(cxL - 8 + i * 7, ny + 7 * s + drop + 3, 3, 3, dc);
+  }
+
+  // The four values, one to a row: block, then the word at double size
+  for (let i = 0; i < 4; i++) {
+    const v = CARE_VALUES[i];
+    const by = P.listY + i * (P.b + P.rg);
+    drawCareBlock(P.listX, by, v, P.b, P.ls);
+    uiText(v.word, P.listX + P.b + 4, by + Math.floor((P.b - 10) / 2), { scale: 2, color: v.text, shadow: PAL.sk7 });
+  }
+
+  // Tagline
+  const tag = P.tag, cx = I.x + Math.floor(I.w / 2);
+  for (let i = 0; i < tag.lines.length; i++) {
+    uiText(tag.lines[i], cx, P.tagY + i * tag.lh, { scale: tag.scale, color: PAL.cream, align: 'center', shadow: PAL.sk7 });
+  }
+  // A heart at each end of the last line when there is room for them
+  const last = tag.lines.length - 1;
+  const tagW = uiTextW(tag.lines[last], 'small', tag.scale);
+  if (tagW + 2 * 12 <= I.w - 12) {
+    const half = Math.floor(tagW / 2), hy = P.tagY + last * tag.lh + (tag.scale === 2 ? 2 : 0);
+    PX.spr('ui_heart', cx - half - 8, hy);
+    PX.spr('ui_heart', cx - half + tagW + 7, hy);
+  }
+}
+
 // Draws the CARE Garden dashboard panel with cycling stats and C-A-R-E value blocks.
 // The panel fills the dashboard to the left of the webcam (`ox` is unused now
 // that the layout comes from the videoArt rectangle).
@@ -1142,6 +1503,7 @@ function drawCareScore(ox) {
     if (!isNaN(rd.getDay())) recordLabel = 'RECORD DAY (' + CARE_DAY_NAMES[rd.getDay()].toUpperCase() + ')';
   }
   const idx = statsCycleIdx;
+  uiCareRecordDay = recordLabel === 'RECORD DAY' ? '' : recordLabel.slice(12, -1);
   const label = idx === 0 ? todayName.toUpperCase() + "'S SMILES" : idx === 1 ? 'SMILES THIS WEEK' : recordLabel;
   const short = idx === 0 ? 'TODAY' : idx === 1 ? 'WEEK' : recordShort;
   const value = idx === 0 ? smileStats.today : idx === 1 ? smileStats.week : smileStats.record;
@@ -1153,24 +1515,27 @@ function drawCareScore(ox) {
   const L = layoutCarePanel(I, digits);
   const col = CARE_STAT_COLORS[idx];
 
+  // Until the first answer about saved stats arrives there may be nothing to show yet
+  const str = (statsLoading && !statsHadLocal && !statsSetByHand()) ? '...' : String(value);
+  // While someone is smiling (sunGlow) the number bounces on a steady beat
+  const beat = sunGlow > 0.15 && Math.floor(frameCount / 10) % 2 === 0;
+  const s = L.s;
+  const drop = Math.max(1, Math.floor(s / 2));
+
+  if (L.split) {
+    drawCareSplit(I, L, idx, str, col, beat);
+    drawFrameVines(x, y, w, h, UI_FLOWER_PINK, UI_FLOWER_YELLOW, 5);
+    return;
+  }
+
   // Label
   const labelText = uiTextW(label, 'small') <= I.w - 4 ? label : (uiTextW(short, 'small') <= I.w - 2 ? short : '');
   if (labelText) uiText(labelText, cx, L.yLabel, { color: PAL.sk2, align: 'center' });
 
-  // The big number: two-tone digits with a drop shadow. While someone is
-  // smiling (sunGlow) it bounces a pixel and flashes on a steady beat.
-  const s = L.s;
-  // Until the first answer about saved stats arrives there may be nothing to show yet
-  const str = (statsLoading && !statsHadLocal && !statsSetByHand()) ? '...' : String(value);
-  const beat = sunGlow > 0.15 && Math.floor(frameCount / 10) % 2 === 0;
+  // The big number
   const nw = uiTextW(str, 'bold', s);
-  const nx = cx - Math.floor(nw / 2), ny = L.yNum - (beat ? 1 : 0);
-  const drop = Math.max(1, Math.floor(s / 2));
-  uiText(str, nx + drop, ny + drop, { font: 'bold', scale: s, color: col.shade });
-  uiText(str, nx, ny, { font: 'bold', scale: s, color: beat ? col.top : col.main });
-  uiClip(nx - 1, ny, nw + 2, 3 * s, () => {
-    uiText(str, nx, ny, { font: 'bold', scale: s, color: beat ? col.flash : col.top });
-  });
+  const nx = cx - Math.floor(nw / 2);
+  drawCareNumber(str, nx, L.yNum, s, col, beat);
 
   // Stat dots indicator — a column beside the number, or a row below it
   for (let i = 0; i < 3; i++) {
