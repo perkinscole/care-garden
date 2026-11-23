@@ -2,7 +2,7 @@
 // File: rabbit.js
 // Author: Cole Perkins
 // Date Created: March 28, 2026 (refactored April 1, 2026)
-// Last Modified: April 11, 2026
+// Last Modified: November 22, 2026
 // Description: Defines the Rabbit class for rabbits that hop across the
 //   screen from one side to the other, moving faster during storms.
 // ================================================================
