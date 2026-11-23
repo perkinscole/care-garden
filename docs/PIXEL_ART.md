@@ -172,12 +172,15 @@ top-right corner (art y 3–21).
 
 - **Speech bubbles.** `new SpeechBubble(text, getPos)`: `getPos()` returns
   **art pixels** `{ x, y }` for the point just above the speaker's head. The
-  bubble draws itself above that point.
+  bubble draws itself above that point. Anyone who can walk off or go
+  inside should speak through `PEOPLE.say(text, getPos, gone)`, which
+  leaves the bubble where it was and fades it once the speaker has left.
 - **Card art.** Each character registers
   `CARD_ART.<id> = (x, y, tick) => { ... }`, drawing at 1× with the feet at
   `(x, y)`. Ids: `ram`, `gardener`, `kids`, `school`, `goose`, `mrperkins`,
   `cat`, `mrconant`, `principal`, `staff`. Keep each within about 60 wide and
-  40 tall (the school may be 120×60); the card enlarges it.
+  40 tall (the school may be 120×60); the card enlarges it. Art about 44
+  wide or less leaves room for the card's text at double size.
 - **Tiny flower.** `drawTinyFlower(x, y, hsl)` draws a hand-held flower
   about 8 pixels tall and 7 wide whose stem bottom is at `(x, y)`.
 - **Flowers** keep their fields (`wx`, `wy`, `hsl`, `type`, `imgs`, `size`,
@@ -193,8 +196,9 @@ top-right corner (art y 3–21).
   `wx = 0.5`. Door thresholds sit at art `y = PX.HOR + 3`, and the sidewalk
   runs along the front of the building from about `PX.HOR + 3` to
   `PX.HOR + 12`. People going inside walk to a spot in front of a door,
-  turn, and step in seen from behind: use `PEOPLE.goIn` in
-  `js/art/people_art.js` rather than picking coordinates.
+  turn, and step in seen from behind; people coming out step toward the
+  viewer and turn at the sidewalk. Use `PEOPLE.goIn` and `PEOPLE.comeOut`
+  in `js/art/people_art.js` rather than picking coordinates.
 
 ## Checking your work
 

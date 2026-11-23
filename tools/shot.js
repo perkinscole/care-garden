@@ -43,7 +43,7 @@ const { chromium } = require('playwright');
   page.on('pageerror', e => problems.push('ERROR ' + e.message));
   page.on('console', m => {
     const text = m.text();
-    if ((m.type() === 'error' || m.type() === 'warning') && !/Failed to load resource|ERR_TUNNEL|ERR_INTERNET|backend was already registered|Platform browser has already/.test(text)) {
+    if ((m.type() === 'error' || m.type() === 'warning') && !/Failed to load resource|ERR_TUNNEL|ERR_INTERNET|backend was already registered|Platform browser has already|GL Driver Message/.test(text)) {
       problems.push(m.type().toUpperCase() + ' ' + text.slice(0, 300));
     }
   });
