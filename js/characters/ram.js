@@ -10,9 +10,17 @@
 // ================================================================
 
 // Distances on the ram sprite, in art pixels from the point between his feet
-const RAM_MOUTH_PX = 19;   // forward to his mouth when his head is down
+const RAM_MOUTH_PX = 20;   // forward to his mouth in every grazing pose
 const RAM_TAIL_PX  = 15;   // back to his tail
 const RAM_HEAD_PX  = 11;   // forward to the middle of his raised head
+
+// His three grazing poses, lowest first: the sprite frames, how high his
+// mouth is above the grass in each, and where a speech bubble goes.
+const RAM_GRAZE = [
+  { frames: ['eat0', 'eat1'], mouth: 2,  bubble: 17 },   // head down in the grass
+  { frames: ['nib0', 'nib1'], mouth: 11, bubble: 22 },   // head low and level
+  { frames: ['up0', 'up1'],   mouth: 18, bubble: 28 },   // head up, a little stretched
+];
 
 // Ram class manages the sheep's state machine (wander/approach/eat/idle),
 // blink cycle, speech bubbles, storm behavior, and poop-to-flower lifecycle.
@@ -32,6 +40,7 @@ class Ram {
     this.eatTimer = 0;
     this.eatTarget = null;  // the flower he is walking to or eating
     this.eatDir = 1;        // which way he will face while eating it
+    this.eatPose = 0;       // index into RAM_GRAZE: how high he is holding his head
     this.approachTimer = 0;
     this.blinkTimer = floor(random(80, 200));
     this.blinking = false;
@@ -72,9 +81,19 @@ class Ram {
   // Art-pixel point just above his head, for speech bubbles and hearts.
   headPos() {
     const p = worldToPx(this.wx, this.wy);
-    // his head is down by the grass while he grazes
-    if (this.state === 'eat') return { x: p.x + this.dir * RAM_MOUTH_PX, y: p.y - 17 };
+    // while he grazes his head is wherever the flower is
+    if (this.state === 'eat') {
+      return { x: p.x + this.dir * (this.eatPose === 0 ? RAM_MOUTH_PX - 3 : RAM_HEAD_PX + 2), y: p.y - RAM_GRAZE[this.eatPose].bubble };
+    }
     return { x: p.x + this.dir * RAM_HEAD_PX, y: p.y - 26 };
+  }
+
+  // Which grazing pose puts his mouth on a flower as it stands right now:
+  // head down for buds and stubs, level for a low bloom, up for a tall one.
+  grazePoseFor(f) {
+    if (f.height() < 14) return 0;
+    const head = f.headPos();
+    return f.footPos().y - head.y >= 16 ? 2 : 1;
   }
 
   // True while a student is stroking him and he is standing still for it.
@@ -207,9 +226,11 @@ class Ram {
         this.state = 'wander';
         return;
       }
-      // Stand beside the flower so that his lowered mouth lands on its
-      // stem, and a touch nearer the front so he is drawn over it.
-      const tx = constrain(f.wx - this.eatDir * RAM_MOUTH_PX / PX.W, 0.02, 0.98);
+      // Stand beside the flower so that his mouth lands on the near side of
+      // its bloom (wherever that has swayed to), and a touch nearer the
+      // front so he is drawn over it.
+      const bloomDx = f.headPos().x - f.footPos().x;
+      const tx = constrain(f.wx + (bloomDx - this.eatDir * (RAM_MOUTH_PX + 3)) / PX.W, 0.02, 0.98);
       const ty = constrain(f.wy + 0.004, 0.04, 0.98);
       const dx = tx - this.wx;
       const dy = ty - this.wy;
@@ -217,6 +238,7 @@ class Ram {
       if (d < 0.006) {
         this.dir = this.eatDir;
         this.state = 'eat';
+        this.eatPose = this.grazePoseFor(f);
         this.eatTimer = 90;
         soundPlay(chewing);
       } else {
@@ -240,6 +262,9 @@ class Ram {
         // shrink the flower as it's eaten
         f.restSize   *= 0.96;
         f.targetSize *= 0.96;
+        // and follow it down: his head only ever lowers during a meal, so
+        // a nodding bloom cannot make it bob up and down
+        this.eatPose = min(this.eatPose, this.grazePoseFor(f));
       }
       if (this.eatTimer <= 0 || !stillThere) {
         // remove it
@@ -264,7 +289,7 @@ class Ram {
   // Picks the sprite frame that matches what the ram is doing right now.
   frameName() {
     const stormy = weatherState === 'stormy';
-    if (this.state === 'eat') return PX.anim(2, 9) === 0 ? 'eat0' : 'eat1';
+    if (this.state === 'eat') return RAM_GRAZE[this.eatPose].frames[PX.anim(2, 9)];
     if (this.state === 'wander' || this.state === 'approach') {
       if (stormy) return floor(this.walkPhase / 1.6) % 2 === 0 ? 'run0' : 'run1';
       const step = floor(this.walkPhase / HALF_PI) % 4;

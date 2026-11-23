@@ -61,7 +61,9 @@ class Principal {
           msg = PRINCIPAL_PHRASES[floor(random(PRINCIPAL_PHRASES.length))];
         }
         const self = this;
-        speechBubbles.push(new SpeechBubble(msg, () => PEOPLE.bubblePos(self.wx, self.wy, self.look)));
+        // (if she steps back inside while it is showing, the bubble stays where it was and fades)
+        PEOPLE.say(msg, () => PEOPLE.bubblePos(self.wx, self.wy, self.look),
+                   () => self.state === 'exit' || self.done);
       }
       this.timer--;
       if (this.timer <= 0) {

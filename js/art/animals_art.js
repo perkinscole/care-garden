@@ -101,24 +101,28 @@
   const RAM_HEAD_HAPPY = patch(RAM_HEAD, [[11, 5, 'o'], [10, 6, 'ofo']]);
   const RAM_HEAD_BAA   = patch(RAM_HEAD, [[9, 9, 'offtttoo'], [10, 10, 'offffo'], [11, 11, 'oooo']]);
   const RAM_HEAD_PANIC = patch(RAM_HEAD_BAA, [[10, 5, 'xe'], [10, 6, 'xe']]);
-  // Head lowered to the ground for grazing; two frames of chewing.
+  // Chewing with his head up: the jaw works and a bit of green shows.
+  const RAM_HEAD_MUNCH = patch(RAM_HEAD, [[13, 8, 'fmo'], [9, 9, 'offfmmko'], [10, 10, 'oooovvo'], [14, 11, 'oo']]);
+  // Head lowered to the ground for grazing, nose pointing down and forward:
+  // the same horn, ear and eye as the raised head, with the face tapering
+  // to a dark muzzle. Two frames of chewing.
   const RAM_HEAD_DOWN = [
-    '...ooooo.....',
-    '..obnbbnoo...',
-    '.obbnbbbbhoo.',
-    '.obnkkkbbwwo.',
-    '.obbkppnbbwwo',
-    '.onbkpfbbfffo',
-    '..obnbbnbfefo',
-    '...ooobbnfefo',
-    '.......offffo',
-    '.......offffo',
-    '.......offmmo',
-    '.......ommmmo',
-    '.......okmmko',
-    '........oooo.',
+    '...ooooo........',
+    '..obnbbnooo.....',
+    '.obbnbbbbhhoo...',
+    '.obnkkkbbwwwwo..',
+    '.obbkppnbbffffo.',
+    '.onbkpfbbffffffo',
+    '..obnbbnbffeeffo',
+    '...ooobbnffeeffo',
+    '......ooofffffo.',
+    '.........offffo.',
+    '..........offmmo',
+    '..........ofmmmo',
+    '..........ommkmo',
+    '...........oooo.',
   ];
-  const RAM_HEAD_CHEW = patch(RAM_HEAD_DOWN, [[7, 12, 'ommmmo'], [6, 13, 'vooooov']]);
+  const RAM_HEAD_CHEW = patch(RAM_HEAD_DOWN, [[10, 12, 'offmmo'], [9, 13, 'vommkmov']]);
   // A woolly neck that slopes from his shoulders down to the lowered head,
   // so the grazing head is joined on instead of hanging off his chest.
   const RAM_NECK = [
@@ -183,9 +187,16 @@
       talk1: ramFrame(RAM_HEAD_BAA, WALK_LEGS[1]),
       talk2: ramFrame(RAM_HEAD_BAA, WALK_LEGS[2], 1),
       talk3: ramFrame(RAM_HEAD_BAA, WALK_LEGS[3]),
-      // grazing
-      eat0: ramFrame(RAM_HEAD_DOWN, STAND, 0, [25, 11], RAM_NECK),
-      eat1: ramFrame(RAM_HEAD_CHEW, STAND, 0, [25, 12], RAM_NECK),
+      // grazing at three heights (ram.js picks the one that puts his mouth
+      // on the flower). Head down in the grass, for buds and stubs:
+      eat0: ramFrame(RAM_HEAD_DOWN, STAND, 0, [22, 11], RAM_NECK),
+      eat1: ramFrame(RAM_HEAD_CHEW, STAND, 0, [22, 11], RAM_NECK),
+      // head held low and level in front of his chest, for a settled bloom:
+      nib0: ramFrame(RAM_HEAD, STAND, 0, [19, 7]),
+      nib1: ramFrame(RAM_HEAD_MUNCH, STAND, 0, [19, 8]),
+      // head up and stretched a little, for a tall fresh bloom:
+      up0: ramFrame(RAM_HEAD, STAND, 0, [19, 0]),
+      up1: ramFrame(RAM_HEAD_MUNCH, STAND, 0, [19, 1]),
       // storm gallop: stretched out, then gathered up
       run0: ramFrame(RAM_HEAD_PANIC, [[RAM_LEG_KICK, -4, 1], [RAM_LEG_KICK, -4, 1], [RAM_LEG_REACH, 0, 1], [RAM_LEG_REACH, 0, 1]], -1),
       run1: ramFrame(RAM_HEAD_PANIC, [F, F, B, B], 1),
@@ -290,20 +301,21 @@
     '...osssssswo................',
     '....ooooooo.................',
   ];
-  // The near wing, thrown up and back with its flight feathers spread,
-  // then beaten down along the body: two frames make the flap.
+  // The near wing, thrown up and back, then beaten down along the body:
+  // two frames make the flap. The raised wing's trailing edge is cut into
+  // steps, one for each long flight feather, with a grey line under each.
   const GOOSE_WING_UP = [
-    '.oo..........',
-    'owwoo........',
+    '.ooo.........',
+    'owwwo........',
     'owwwwo.......',
-    'ogwwwwo......',
-    '.owwwwwo.....',
-    '.ogwwwwwo....',
-    '..owgwwwwo...',
-    '..oggwwwwwo..',
-    '...ooggwwwwo.',
-    '.....ooggwwwo',
-    '.......ooooo.',
+    '.oogwwo......',
+    'owwwwwwo.....',
+    'owwwwwwwo....',
+    '.oogwwwwwo...',
+    'owwwwgwwwwo..',
+    'owwwwwgwwwwo.',
+    '.ooggwwgwwwwo',
+    '...ooooooooo.',
   ];
   const GOOSE_WING_DOWN = [
     '...oooooooo..',
@@ -563,16 +575,18 @@
     'obbbkklkkbbbo',
     'obgbblllbbgbo',
   ];
+  // Glancing right: his head turns, so the far ear slips out of sight, the
+  // muzzle swings over to that side and both eyes show their whites.
   const HOG_SIDE = [
     '...ooooooo...',
-    '.oobhghgbboo.',
-    'odobbbbbbbodo',
-    '.obbbbbbbbbo.',
-    'obbebbbbbbebo',
-    'obbbblllllbbo',
-    'obbbllnnnllbo',
-    '.obbllwowllo.',
-    '.obbbbwowbbo.',
+    '.oobhghgbbo..',
+    'odobbbbbbbbo.',
+    '.obbbbbbbbbbo',
+    'obbbwebbbwebo',
+    'obbbbbblllllo',
+    'obbbbbllnnnlo',
+    '.obbbbllwowlo',
+    '.obbbbbbwowo.',
     'obgbbbbbbbgbo',
     'obbkkbbbkkbbo',
     'obbbkklkkbbbo',

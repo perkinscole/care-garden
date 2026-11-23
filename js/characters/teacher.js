@@ -121,6 +121,7 @@ class Teacher {
       this.twy = random(0.3, 0.7);
       this.dir = this.twx < 0.5 ? -1 : 1;
       this.fade = 0;   // fades in coming out of the doors
+      this.emerging = true;   // first steps out, seen from the front
     } else {
       // Start off-screen, walk toward school
       this.wx = this.fromLeft ? -0.08 : 1.08;
@@ -143,6 +144,8 @@ class Teacher {
     if (!this.departing) {
       // along the sidewalk to the doors, then in
       if (PEOPLE.goIn(this, this.speed)) this.done = true;
+    } else if (PEOPLE.comeOut(this, this.speed)) {
+      // down the step from the doors first
     } else if (dist > 0.02) {
       this.wx += (dx / dist) * this.speed;
       this.wy += (dy / dist) * this.speed;
@@ -160,8 +163,9 @@ class Teacher {
       if (random() < 0.5) {
         const lines = this.departing ? TEACHER_GOODBYES : TEACHER_GREETINGS;
         const self = this;
-        speechBubbles.push(new SpeechBubble(lines[floor(random(lines.length))],
-          () => PEOPLE.bubblePos(self.wx, self.wy, self.look)));
+        // (the bubble stays behind, fading, if they go in while it is showing)
+        PEOPLE.say(lines[floor(random(lines.length))],
+          () => PEOPLE.bubblePos(self.wx, self.wy, self.look), () => PEOPLE.hasLeft(self));
       }
     }
   }
@@ -173,10 +177,11 @@ class Teacher {
     if (alpha <= 0.02) return;
     const c = PX.c, prevAlpha = c.globalAlpha;
     c.globalAlpha = prevAlpha * alpha;
-    if (this.entering) {
-      // seen from behind, stepping in through the doors
+    if (this.entering || this.emerging) {
+      // seen from behind stepping in through the doors, from the front stepping out
       PX.shadow(x, y, 12);
-      PEOPLE.draw(x, y, this.look, this.dir, PEOPLE.backFrame(this.walkPhase));
+      PEOPLE.draw(x, y, this.look, this.dir,
+                  this.entering ? PEOPLE.backFrame(this.walkPhase) : PEOPLE.frontFrame(this.walkPhase));
     } else {
       drawTeacherFigure(x, y, this.look, this.dir, PEOPLE.walkFrame(this.walkPhase), this.carry,
                         PEOPLE.face(PX.tick, this.seed, 'smile'));
@@ -185,7 +190,10 @@ class Teacher {
   }
 }
 
-// I SPY card: three different members of staff, one with a tote bag and one with a coffee.
+// I SPY card: three different members of staff bunched together, no wider
+// than 44 art pixels so the card can use its big text. The two at the back
+// (one with a tote bag, one with a coffee) stand a little higher and are
+// drawn first; the one in the middle stands in front and waves.
 CARD_ART.staff = (x, y, tick) => {
   const P = PEOPLE;
   const looks = CARD_ART._staffLooks || (CARD_ART._staffLooks = [
@@ -196,11 +204,11 @@ CARD_ART.staff = (x, y, tick) => {
     P.look({ kind: 'adult', skin: 0, hair: 'long', hairCol: P.GINGER, top: P.SOFTS[3], collar: PAL.white,
              bottom: P.CHARCOAL, shoes: PAL.black }),
   ]);
-  drawTeacherFigure(x - 19, y, looks[0], 1, 'stand', 'bag', P.face(tick, 1, 'smile'));
-  // the one in the middle gives a wave now and then
+  drawTeacherFigure(x - 12, y - 2, looks[0], 1, 'stand', 'bag', P.face(tick, 1, 'smile'));
+  drawTeacherFigure(x + 13, y - 2, looks[2], -1, 'stand', 'coffee', P.face(tick, 3, 'smile'));
+  // the one in front gives a wave now and then
   const waving = tick % 260 > 170;
   PX.shadow(x, y, 12);
   P.draw(x, y, looks[1], 1, 'stand', waving ? (Math.floor(tick / 10) % 2 ? 'wave1' : 'wave2') : 'down',
          P.face(tick, 2, 'smile'));
-  drawTeacherFigure(x + 19, y, looks[2], -1, 'stand', 'coffee', P.face(tick, 3, 'smile'));
 };
