@@ -609,7 +609,7 @@ function drawGardenLabels() {
 //   weather  sunny | cloudy | rainy | stormy | clearing
 //   speed    day-cycle multiplier, freeze=1 stops the clock
 //   flowers  plant this many demo flowers with stand-in faces
-//   spawn    comma list: kids, rabbit, groundhog, perkins, conant, principal,
+//   spawn    comma list: kids, rabbit, birds, groundhog, perkins, conant, principal,
 //            teachers, arrivals, departures, confetti, hats
 //   panel    show one side panel: gallery | ram | gardener | kids | school | ...
 //   score    set today's CARE score
@@ -652,6 +652,7 @@ function applyDebugParams() {
   for (const what of (q.get('spawn') || '').split(',')) {
     if (what === 'kids')       for (let i = 0; i < 5; i++) kids.push(new Kid());
     if (what === 'rabbit')     { rabbits.push(new Rabbit()); rabbits.push(new Rabbit()); }
+    if (what === 'birds')      for (let i = 0; i < 5; i++) birds_flock.push(new Bird());
     if (what === 'groundhog')  groundhog = new Groundhog();
     if (what === 'perkins')    mrPerkins = new MrPerkins();
     if (what === 'conant')     mrConant = new MrConant();
