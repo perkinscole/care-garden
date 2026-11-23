@@ -10,7 +10,7 @@
 // ================================================================
 
 // Distances on the ram sprite, in art pixels from the point between his feet
-const RAM_MOUTH_PX = 16;   // forward to his mouth when his head is down
+const RAM_MOUTH_PX = 19;   // forward to his mouth when his head is down
 const RAM_TAIL_PX  = 15;   // back to his tail
 const RAM_HEAD_PX  = 11;   // forward to the middle of his raised head
 
@@ -24,7 +24,7 @@ class Ram {
     this.wy = 0.6;
     this.twx = random(0.1, 0.9); // target world x
     this.twy = random(0.2, 0.9); // target world y
-    this.speed = 0.0025;
+    this.speed = 0.0018;
     this.walkPhase = 0;
     this.dir = 1;           // 1 = facing right, -1 = facing left
     this.state = 'wander';  // wander | approach | eat | idle
@@ -72,6 +72,8 @@ class Ram {
   // Art-pixel point just above his head, for speech bubbles and hearts.
   headPos() {
     const p = worldToPx(this.wx, this.wy);
+    // his head is down by the grass while he grazes
+    if (this.state === 'eat') return { x: p.x + this.dir * RAM_MOUTH_PX, y: p.y - 17 };
     return { x: p.x + this.dir * RAM_HEAD_PX, y: p.y - 26 };
   }
 
@@ -80,8 +82,20 @@ class Ram {
     return this.state === 'idle' && kids.some(k => k.state === 'petting');
   }
 
-  // Advances the ram's state machine each frame: blinking, storm panic, wandering, eating, and pooping.
+  // Runs his state machine for a frame, then moves his legs in time with
+  // the ground he actually covered (a flat-out gallop in a storm).
   update() {
+    const fromX = this.wx, fromY = this.wy;
+    this.think();
+    if (weatherState === 'stormy') {
+      if (this.wx !== fromX || this.wy !== fromY) this.walkPhase += 0.45;
+    } else {
+      this.walkPhase += walkStride(this.wx - fromX, this.wy - fromY, 26);
+    }
+  }
+
+  // Advances the ram's state machine each frame: blinking, storm panic, wandering, eating, and pooping.
+  think() {
     // blink
     this.blinkTimer--;
     if (this.blinkTimer <= 0) {
@@ -120,7 +134,7 @@ class Ram {
       }
       this.speed = 0.012; // much faster
     } else {
-      this.speed = 0.0025; // normal speed
+      this.speed = 0.0018; // normal speed
     }
 
     if (this.state === 'wander') {
@@ -164,7 +178,6 @@ class Ram {
         this.wx = constrain(this.wx + sep.nudgeX, 0.02, 0.98);
         this.wy = constrain(this.wy + sep.nudgeY, 0.04, 0.98);
         this.dir = dx > 0 ? 1 : -1;
-        this.walkPhase += isStormy ? 0.45 : 0.18;
 
         // random baa
         if (frameCount % 180 === 0 && random() < 0.25) {
@@ -217,7 +230,6 @@ class Ram {
           this.wy = constrain(this.wy + sep.nudgeY, 0.04, 0.98);
         }
         if (abs(dx) > 0.004) this.dir = dx > 0 ? 1 : -1;
-        this.walkPhase += 0.22;
       }
 
     } else if (this.state === 'eat') {

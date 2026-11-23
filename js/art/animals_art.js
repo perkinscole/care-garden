@@ -57,12 +57,14 @@
     t: PAL.re3, v: PAL.gr3,                                  // tongue/mouth, chewed greens
   };
 
+  // The fleece is a row of round tufts along the top and a scalloped hem.
   const RAM_BODY = [
-    '....oooo..ooooo..oooo..',
-    '..oohhhhoohhhhhoohhhhoo',
-    '.ohhhhhhhhhhhhhhhhhhhwo',
-    'ohhhwwwwwwwwwwwwwwwwwwo',
+    '....ooo.....oooo.......',
+    '..oohhhoo.oohhhhoo.ooo.',
+    '.ohhhhhhhohhhhhhhhohhho',
+    'ohhhhwwwhhhhwwwwwhhhwwo',
     'ohhwwwwwwwwwwwwwwwwwwwo',
+    'ohwwwwwwwwwwwwwwwwwwwwo',
     'ohwwwwswwwwwwwswwwwwwwo',
     'owwwssswwwwwssswwwwwwwo',
     'owwwwwwwwswwwwwwwwswwwo',
@@ -117,6 +119,20 @@
     '........oooo.',
   ];
   const RAM_HEAD_CHEW = patch(RAM_HEAD_DOWN, [[7, 12, 'ommmmo'], [6, 13, 'vooooov']]);
+  // A woolly neck that slopes from his shoulders down to the lowered head,
+  // so the grazing head is joined on instead of hanging off his chest.
+  const RAM_NECK = [
+    '..oooo....',
+    '.ohhhhoo..',
+    'hhhwwwwwo.',
+    'wwwwwwwwwo',
+    'wwwwwwwwwo',
+    'wwwwwwwsso',
+    'wwwwwwsso.',
+    'wwwwssso..',
+    'wwsssoo...',
+    'ssooo.....',
+  ];
 
   // Legs: straight, stepping forward, stepping back, and two bent ones for the gallop
   const RAM_LEG = [
@@ -133,16 +149,17 @@
   const RAM_LEG_KICK = mirror(RAM_LEG_REACH);
 
   const FAR = { f: 'g' };   // far-side legs are a shade darker
-  const RAM_W = 36, RAM_H = 26;
+  const RAM_W = 40, RAM_H = 26;
   // Puts a whole ram together. legs = [backNear, backFar, frontNear, frontFar],
   // each [part, dx]; `drop` lowers the body a pixel for the bounce of a step.
-  const ramFrame = (head, legs, drop = 0, headAt = [18, 1]) => stamp(RAM_W, RAM_H, [
+  const ramFrame = (head, legs, drop = 0, headAt = [18, 1], neck = null) => stamp(RAM_W, RAM_H, [
     [legs[1][0], 9 + legs[1][1], RAM_H - legs[1][0].length - (legs[1][2] || 0), FAR],
     [legs[3][0], 21 + legs[3][1], RAM_H - legs[3][0].length - (legs[3][2] || 0), FAR],
     [legs[0][0], 5 + legs[0][1], RAM_H - legs[0][0].length - (legs[0][2] || 0)],
     [legs[2][0], 17 + legs[2][1], RAM_H - legs[2][0].length - (legs[2][2] || 0)],
     [RAM_TAIL, 0, 10 + drop],
-    [RAM_BODY, 2, 6 + drop],
+    [RAM_BODY, 2, 5 + drop],
+    ...(neck ? [[neck, 20, 7 + drop]] : []),
     [head, headAt[0], headAt[1] + drop],
   ]);
   const S = [RAM_LEG, 0], U = [RAM_LEG_UP, 0, 1];
@@ -167,8 +184,8 @@
       talk2: ramFrame(RAM_HEAD_BAA, WALK_LEGS[2], 1),
       talk3: ramFrame(RAM_HEAD_BAA, WALK_LEGS[3]),
       // grazing
-      eat0: ramFrame(RAM_HEAD_DOWN, STAND, 0, [22, 11]),
-      eat1: ramFrame(RAM_HEAD_CHEW, STAND, 0, [22, 12]),
+      eat0: ramFrame(RAM_HEAD_DOWN, STAND, 0, [25, 11], RAM_NECK),
+      eat1: ramFrame(RAM_HEAD_CHEW, STAND, 0, [25, 12], RAM_NECK),
       // storm gallop: stretched out, then gathered up
       run0: ramFrame(RAM_HEAD_PANIC, [[RAM_LEG_KICK, -4, 1], [RAM_LEG_KICK, -4, 1], [RAM_LEG_REACH, 0, 1], [RAM_LEG_REACH, 0, 1]], -1),
       run1: ramFrame(RAM_HEAD_PANIC, [F, F, B, B], 1),
@@ -273,27 +290,34 @@
     '...osssssswo................',
     '....ooooooo.................',
   ];
+  // The near wing, thrown up and back with its flight feathers spread,
+  // then beaten down along the body: two frames make the flap.
   const GOOSE_WING_UP = [
-    '..oo.....',
-    '.owwo....',
-    '.owgwo...',
-    '..owgwo..',
-    '..owggwo.',
-    '...owggo.',
-    '...owggo.',
+    '.oo..........',
+    'owwoo........',
+    'owwwwo.......',
+    'ogwwwwo......',
+    '.owwwwwo.....',
+    '.ogwwwwwo....',
+    '..owgwwwwo...',
+    '..oggwwwwwo..',
+    '...ooggwwwwo.',
+    '.....ooggwwwo',
+    '.......ooooo.',
   ];
   const GOOSE_WING_DOWN = [
-    'ooo......',
-    'owwooo...',
-    '.oggwwoo.',
-    '..oggggo.',
-    '...oooo..',
+    '...oooooooo..',
+    '.oowwwwwwwwo.',
+    'owwwwwwwwwwwo',
+    'ogwgwgwwwwwo.',
+    '.ooogggggoo..',
+    '....ooooo....',
   ];
   const gooseChase = (wing, wingAt, legA, legB, drop) => stamp(28, 19, [
     [legB[0], legB[1], 19 - legB[0].length - (legB[2] || 0), { y: 'd' }],
     [legA[0], legA[1], 19 - legA[0].length - (legA[2] || 0)],
-    [wing, wingAt[0], wingAt[1] + drop],
     [GOOSE_CHARGE, 0, 7 + drop],
+    [wing, wingAt[0], wingAt[1] + drop],
   ]);
   // leg parts paired with the x where they are stamped: [part, x, lift]
   const gl = (part, x, lift) => [part, x, lift];
@@ -323,8 +347,8 @@
     pal: GOOSE_PAL,
     anchor: [7, 19],
     frames: [
-      gooseChase(GOOSE_WING_UP, [3, 2], G_STEPS[0][0], G_STEPS[0][1], 0),
-      gooseChase(GOOSE_WING_UP, [3, 5], G_STEPS[2][0], G_STEPS[2][1], 1),
+      gooseChase(GOOSE_WING_UP, [0, 0], G_STEPS[0][0], G_STEPS[0][1], 0),
+      gooseChase(GOOSE_WING_DOWN, [0, 8], G_STEPS[2][0], G_STEPS[2][1], 1),
     ],
   });
 
@@ -517,41 +541,44 @@
   // `side` glances right (flip it for left). groundhog.js draws the top N
   // rows to make him rise out of his hole, so each pose is also sliced
   // into frames named front1..front13, side1.., blink1.. (N rows tall).
+  // A groundhog, not a teddy bear: a flat, wide head with small ears set
+  // low at the sides, grizzled grey-brown fur, a pale muzzle with a dark
+  // nose and two big front teeth, and dark paws held together on his chest.
   const HOG_PAL = {
-    o: PAL.ink, b: PAL.wo2, d: PAL.wo3, l: PAL.ta2, h: PAL.wo1,
-    e: PAL.black, n: PAL.black, w: PAL.white, p: PAL.pi2,
+    o: PAL.ink, b: PAL.ta4, d: PAL.wo3, l: PAL.ta1, h: PAL.ta3, g: PAL.g3,
+    e: PAL.black, n: PAL.black, w: PAL.white, k: PAL.wo4,
   };
   const HOG_FRONT = [
-    '....ooooo....',
-    '.ooobhhhbooo.',
-    'opobhbbbbbopo',
+    '...ooooooo...',
+    '.oobhghgbboo.',
+    'odobbbbbbbodo',
     '.obbbbbbbbbo.',
-    'obbebbbbbebbo',
-    'obblllnlllbbo',
-    'obbllwowllbbo',
-    '.obblllllbbo.',
-    '..obbbbbbbo..',
-    '.obbdllldbbo.',
-    'obbbolllobbbo',
-    'obbbbllllbbbo',
-    'obbbbllllbbbo',
+    'obebbbbbbbebo',
+    'obbblllllbbbo',
+    'obbllnnnllbbo',
+    '.obllwowllbo.',
+    '.obbbwowbbbo.',
+    'obgbbbbbbbgbo',
+    'obbkkbbbkkbbo',
+    'obbbkklkkbbbo',
+    'obgbblllbbgbo',
   ];
   const HOG_SIDE = [
-    '....ooooo....',
-    '.ooobhhhbooo.',
-    'opobhbbbbbopo',
+    '...ooooooo...',
+    '.oobhghgbboo.',
+    'odobbbbbbbodo',
     '.obbbbbbbbbo.',
-    'obbbebbbbbebo',
-    'obbblllnlllbo',
-    'obbbllwowllbo',
-    '.obbblllllbo.',
-    '..obbbbbbbo..',
-    '.obbdllldbbo.',
-    'obbbolllobbbo',
-    'obbbbllllbbbo',
-    'obbbbllllbbbo',
+    'obbebbbbbbebo',
+    'obbbblllllbbo',
+    'obbbllnnnllbo',
+    '.obbllwowllo.',
+    '.obbbbwowbbo.',
+    'obgbbbbbbbgbo',
+    'obbkkbbbkkbbo',
+    'obbbkklkkbbbo',
+    'obgbblllbbgbo',
   ];
-  const HOG_BLINK = patch(HOG_FRONT, [[3, 4, 'o'], [9, 4, 'o']]);
+  const HOG_BLINK = patch(HOG_FRONT, [[2, 4, 'd'], [10, 4, 'd']]);
   const hogFrames = {};
   for (const [name, rows] of [['front', HOG_FRONT], ['side', HOG_SIDE], ['blink', HOG_BLINK]]) {
     for (let n = 1; n <= rows.length; n++) hogFrames[name + n] = rows.slice(0, n);

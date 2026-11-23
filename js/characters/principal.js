@@ -24,8 +24,10 @@ class Principal {
   static pixel = true;   // drawn in art pixels (see js/pixel.js)
 
   constructor(reason) {
+    // On the sidewalk between the two pairs of main doors, so that people
+    // going in and out pass on either side of her
     this.wx = 0.5;
-    this.wy = 0.05;
+    this.wy = 0.06;
     this.dir = 1;
     this.state = 'appear';
     this.reason = reason; // 'dawn', 'dusk', 'rain'
@@ -59,12 +61,8 @@ class Principal {
           msg = PRINCIPAL_PHRASES[floor(random(PRINCIPAL_PHRASES.length))];
         }
         const self = this;
-        speechBubbles.push(new SpeechBubble(msg, function() {
-          const p = worldToPx(self.wx, self.wy);
-          return { x: p.x, y: p.y - 33 };
-        }));
+        speechBubbles.push(new SpeechBubble(msg, () => PEOPLE.bubblePos(self.wx, self.wy, self.look)));
       }
-      this.walkPhase += 0.02;
       this.timer--;
       if (this.timer <= 0) {
         this.state = 'exit';
@@ -73,10 +71,10 @@ class Principal {
 
     if (this.state === 'exit') {
       // Step back through the doors (decrease wy toward 0), fading as she goes
-      this.wy -= 0.002;
-      this.walkPhase += 0.18;
-      this.alpha = max(0, this.alpha - 14);
-      if (this.wy <= 0.01) this.done = true;
+      this.wy -= 0.0012;
+      this.walkPhase += 0.2;
+      this.alpha = max(0, this.alpha - 12);
+      if (this.wy <= PEOPLE.DOOR_WY || this.alpha <= 0) this.done = true;
     }
   }
 
@@ -89,8 +87,7 @@ class Principal {
     if (this.state === 'welcome') {
       arm = PX.anim(2, 9) ? 'wave1' : 'wave2';
     } else if (this.state === 'exit') {
-      leg = PEOPLE.walkFrame(this.walkPhase);
-      arm = 'walk';
+      leg = PEOPLE.backFrame(this.walkPhase);   // seen from behind, going back in
     }
     const c = PX.c, prevAlpha = c.globalAlpha;
     c.globalAlpha = prevAlpha * a;

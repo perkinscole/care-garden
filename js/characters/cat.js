@@ -74,8 +74,17 @@ class Cat {
     speechBubbles.push(new SpeechBubble(text, () => this.headPos()));
   }
 
-  // Advances the cat's state each frame: blinking, speech, rain checks, wandering, stalking, and sleeping.
+  // Runs the state machine for a frame, then moves the legs in time with
+  // the ground actually covered (a scamper when running for shelter).
   update() {
+    const fromX = this.wx, fromY = this.wy;
+    this.think();
+    if (this.state === 'shelter') this.walkPhase += 0.35;
+    else this.walkPhase += walkStride(this.wx - fromX, this.wy - fromY, 22);
+  }
+
+  // Advances the cat's state each frame: blinking, speech, rain checks, wandering, stalking, and sleeping.
+  think() {
     // blink
     this.blinkTimer--;
     if (this.blinkTimer <= 0) {
@@ -135,7 +144,6 @@ class Cat {
         this.wx += (dx / d) * this.speed;
         this.wy += (dy / d) * this.speed;
         this.dir = dx > 0 ? 1 : -1;
-        this.walkPhase += 0.16;
 
         const sep = getSeparation(this.wx, this.wy, 'cat');
         this.wx = constrain(this.wx + sep.nudgeX, 0.02, 0.98);
@@ -172,7 +180,6 @@ class Cat {
         // creep slowly toward target
         this.wx += (dx / d) * this.speed * 2.0;
         this.wy += (dy / d) * this.speed * 1.2;
-        this.walkPhase += 0.08; // slow creep
       }
 
       // give up if target flies too far away
@@ -225,7 +232,6 @@ class Cat {
         // run fast toward school
         this.wx += (dx / d) * this.speed * 2.8;
         this.wy += (dy / d) * this.speed * 2.8;
-        this.walkPhase += 0.35;
       }
 
     } else if (this.state === 'sheltering') {
