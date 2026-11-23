@@ -529,7 +529,7 @@ function drawGardenLabels() {
   const banner = (label, alpha, y, color) => {
     PX.alpha(alpha / 255, () => {
       const w = PX.measure(label, 'bold') + 16;
-      PX.panel(PX.W / 2 - w / 2, y, w, 16, PAL.sk8, PAL.ink, 2);
+      PX.box(PX.W / 2 - w / 2, y, w, 16, PAL.ink, PAL.sk8);
       PX.text(label, PX.W / 2, y + 4, { font: 'bold', align: 'center', color });
     });
   };
