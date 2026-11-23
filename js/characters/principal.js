@@ -2,14 +2,27 @@
 // File: principal.js
 // Author: Cole Perkins
 // Date Created: April 11, 2026
-// Last Modified: April 12, 2026
+// Last Modified: November 22, 2026
 // Description: Ms. Manning, the principal of Robert Adams Middle School.
 //   Appears at the school door during dawn, dusk, and rain to greet
-//   students and welcome them inside.
+//   students and welcome them inside. Drawn as pixel art from the shared
+//   people sprites in js/art/people_art.js: blonde bob, plum blazer and
+//   skirt, white blouse, waving.
 // ================================================================
+
+// Ms. Manning's look: blonde bob, no glasses, blazer and skirt.
+function principalLook() {
+  return PEOPLE.look({
+    kind: 'skirt', skin: 1, hair: 'bob', hairCol: PEOPLE.BLONDE,
+    top: PX.ramp(322, 45, 42), collar: PAL.white, tie: PAL.ye2,   // gold necklace
+    bottom: PX.ramp(322, 42, 27), legs: PEOPLE.COCOA, shoes: PAL.black,
+  });
+}
 
 // Principal character that stands at the school door during arrival/departure events
 class Principal {
+  static pixel = true;   // drawn in art pixels (see js/pixel.js)
+
   constructor(reason) {
     this.wx = 0.5;
     this.wy = 0.05;
@@ -21,6 +34,7 @@ class Principal {
     this.spoken = false;
     this.done = false;
     this.walkPhase = 0;
+    this.look = principalLook();
   }
 
   // Updates state: fade in, speak, then walk back into school
@@ -46,8 +60,8 @@ class Principal {
         }
         const self = this;
         speechBubbles.push(new SpeechBubble(msg, function() {
-          const pos = worldToScreen(self.wx, self.wy);
-          return { x: pos.sx, y: pos.sy };
+          const p = worldToPx(self.wx, self.wy);
+          return { x: p.x, y: p.y - 33 };
         }));
       }
       this.walkPhase += 0.02;
@@ -58,117 +72,39 @@ class Principal {
     }
 
     if (this.state === 'exit') {
-      // Walk backward toward school (decrease wy toward 0)
+      // Step back through the doors (decrease wy toward 0), fading as she goes
       this.wy -= 0.002;
       this.walkPhase += 0.18;
-      // Shrink as she goes into the distance
+      this.alpha = max(0, this.alpha - 14);
       if (this.wy <= 0.01) this.done = true;
     }
   }
 
-  // Draws the principal at the school door
+  // Draws the principal at the school door, waving while she welcomes everyone
   draw() {
-    const { sx, sy } = worldToScreen(this.wx, this.wy);
-    const ds = depthScale(this.wy);
-    push();
-    translate(sx, sy);
-    scale(ds * 2.2);
-    drawPrincipalShape(this.walkPhase, this.state, this.dir);
-    pop();
+    const a = this.alpha / 255;
+    if (a <= 0.02) return;
+    const { x, y } = worldToPx(this.wx, this.wy);
+    let leg = 'stand', arm = 'down';
+    if (this.state === 'welcome') {
+      arm = PX.anim(2, 9) ? 'wave1' : 'wave2';
+    } else if (this.state === 'exit') {
+      leg = PEOPLE.walkFrame(this.walkPhase);
+      arm = 'walk';
+    }
+    const c = PX.c, prevAlpha = c.globalAlpha;
+    c.globalAlpha = prevAlpha * a;
+    PX.shadow(x, y, 12);
+    PEOPLE.draw(x, y, this.look, this.dir, leg, arm, PEOPLE.face(PX.tick, 5, 'smile'));
+    c.globalAlpha = prevAlpha;
   }
 }
 
-// Draws Ms. Manning: professional female figure with blazer, skirt, and styled hair
-function drawPrincipalShape(phase, state, dir) {
-  push();
-  scale(dir, 1);
-
-  // Legs
-  const legSwing = sin(phase) * 0.1;
-  push();
-  fill(25, 30, 25); noStroke();
-  // Left leg
-  push(); translate(-6, 0); rotate(legSwing);
-  rect(-3, 0, 6, 22, 2); // leg
-  fill(0, 0, 15); rect(-3, 20, 7, 5, 1); // shoe
-  pop();
-  // Right leg
-  push(); translate(6, 0); rotate(-legSwing);
-  rect(-3, 0, 6, 22, 2);
-  fill(0, 0, 15); rect(-4, 20, 7, 5, 1);
-  pop();
-  pop();
-
-  // Skirt
-  fill(320, 35, 30); noStroke();
-  beginShape();
-  vertex(-12, -2);
-  vertex(12, -2);
-  vertex(14, 12);
-  vertex(-14, 12);
-  endShape(CLOSE);
-
-  // Blazer / torso
-  fill(320, 40, 35); noStroke();
-  rect(-13, -28, 26, 28, 3);
-  // Lapels
-  fill(320, 30, 28);
-  triangle(-4, -28, -4, -14, -12, -28);
-  triangle(4, -28, 4, -14, 12, -28);
-  // Blouse underneath
-  fill(0, 0, 92);
-  rect(-4, -26, 8, 16, 1);
-
-  // Necklace
-  fill(45, 70, 55);
-  ellipse(0, -14, 4, 3);
-
-  // Arms
-  const armSwing = sin(phase) * 0.15;
-  fill(320, 40, 35); noStroke();
-  // Left arm
-  push(); translate(-13, -26); rotate(-0.1 + armSwing);
-  rect(-4, 0, 7, 22, 2);
-  fill(50, 40, 65); ellipse(-1, 23, 6, 5); // hand
-  pop();
-  // Right arm — waving high overhead during welcome
-  push(); translate(13, -26);
-  if (state === 'welcome') {
-    rotate(-2.2 + sin(t * 0.12) * 0.4); // arm raised high, waving side to side
-  } else {
-    rotate(0.1 - armSwing);
-  }
-  rect(-3, 0, 7, 22, 2);
-  fill(50, 40, 65); ellipse(0, 23, 6, 5);
-  pop();
-
-  // Neck
-  fill(30, 35, 65); noStroke();
-  rect(-3, -32, 6, 6);
-
-  // Head
-  fill(30, 35, 65);
-  ellipse(0, -40, 22, 24);
-
-  // Hair — blonde styled bob
-  fill(42, 65, 65); noStroke();
-  arc(0, -42, 24, 22, PI, TWO_PI); // top
-  // Side hair
-  ellipse(-11, -38, 6, 14);
-  ellipse(11, -38, 6, 14);
-
-  // Eyes
-  fill(0, 0, 20);
-  ellipse(-4, -40, 3, 3.5);
-  ellipse(4, -40, 3, 3.5);
-  // Pupils
-  fill(0, 0, 95);
-  ellipse(-3.5, -40.5, 1.2, 1.2);
-  ellipse(4.5, -40.5, 1.2, 1.2);
-
-  // Smile
-  noFill(); stroke(0, 0, 30); strokeWeight(1.2);
-  arc(0, -36, 8, 5, 0.1, PI - 0.1);
-
-  pop();
-}
+// I SPY card: Ms. Manning waving hello.
+CARD_ART.principal = (x, y, tick) => {
+  const L = CARD_ART._principalLook || (CARD_ART._principalLook = principalLook());
+  const waving = tick % 220 < 150;
+  PX.shadow(x, y, 12);
+  PEOPLE.draw(x, y, L, 1, 'stand', waving ? (Math.floor(tick / 9) % 2 ? 'wave1' : 'wave2') : 'down',
+              PEOPLE.face(tick, 5, 'smile'));
+};
