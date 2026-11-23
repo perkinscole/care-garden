@@ -9,8 +9,13 @@
 //   people sprites in js/art/people_art.js (straw sun hat, floral dress).
 // ================================================================
 
-// How far in front of her feet the spout of the tipped can is, in art pixels
-const GARDENER_SPOUT_PX = 10;
+// Where the end of the spout is when she pours, in art pixels forward of
+// and above her feet: with the can at her waist (for seedlings and buds)
+// and lifted to head height (for anything with a bloom on it).
+const GARDENER_POUR_LOW  = { fwd: 10, up: 9 };
+const GARDENER_POUR_HIGH = { fwd: 16, up: 27 };
+// A flower whose top is no higher than this is watered from the waist
+const GARDENER_LOW_TOP = 7;
 
 // Gardener class handles the gardener's state machine (wander/water/shelter/flee/night),
 // watering can, droplet particles, umbrella display, and goose evasion.
@@ -42,9 +47,30 @@ class Gardener {
   }
 
   // Spawns a speech bubble that floats just above her hat (or her umbrella).
+  // If she goes in at the doors while it is showing it stays behind on the
+  // sidewalk and fades.
   speak(msg) {
-    speechBubbles.push(new SpeechBubble(msg,
-      () => PEOPLE.bubblePos(this.wx, this.wy, this.look, this.umbrellaOut ? 6 : 0)));
+    PEOPLE.say(msg,
+      () => PEOPLE.bubblePos(this.wx, this.wy, this.look, this.umbrellaOut ? 6 : 0),
+      () => PEOPLE.hasLeft(this));
+  }
+
+  // Works out how to water a flower as it stands right now. Returns
+  // { pour, x }: which way she holds the can (GARDENER_POUR_LOW or _HIGH)
+  // and the art x the water should fall at. That is the middle of the
+  // bloom when the spout clears the top of it; for a bloom taller than she
+  // can lift the can, it is the nearest point on her side where the water
+  // still lands on top of the petals (or just clear of them) instead of
+  // falling down in front of the bloom.
+  waterPlan(f) {
+    const b = f.headPos(), foot = f.footPos();
+    const mid = foot.y - b.y;                 // height of the middle of the bloom
+    if (mid + b.r <= GARDENER_LOW_TOP) return { pour: GARDENER_POUR_LOW, x: b.x };
+    const pour = GARDENER_POUR_HIGH;
+    const above = pour.up - 4 - mid;          // how far above the middle the water starts
+    let off = 0;
+    if (above < b.r) off = above > 0 ? ceil(sqrt(b.r * b.r - above * above)) : b.r + 1;
+    return { pour, x: b.x - this.waterSide * off };
   }
 
   // Searches the flowers for one within watering range and returns it, or null.
@@ -80,6 +106,8 @@ class Gardener {
       this.droplets = [];
       this.state = 'goInside';
       this.entering = false;
+      this.emerging = false;
+      this.nightPause = 70;      // she stands and says goodnight before setting off
       this.doorWx = undefined;   // PEOPLE.goIn picks the nearer pair of doors
       this.speak("Time to head in. Goodnight, garden!");
     }
@@ -92,6 +120,7 @@ class Gardener {
       this.wx = PEOPLE.doorX();
       this.wy = PEOPLE.DOOR_WY + 0.008;
       this.fade = 0;
+      this.emerging = true;      // first steps out of the doors, seen from the front
       this.twx = random(0.1, 0.9);
       this.twy = random(0.2, 0.8);
       this.speak("Good morning! Let's tend the garden!");
@@ -99,6 +128,8 @@ class Gardener {
 
     // If inside, skip all other logic
     if (this.state === 'inside') return;
+    // Stepping out of the doors at dawn: nothing else until she is on the sidewalk
+    if (PEOPLE.comeOut(this, this.speed * 1.5)) return;
 
     if (isRaining && !this.sheltering && !this.goingInside) {
       this.sheltering = true;
@@ -215,17 +246,19 @@ class Gardener {
         this.waterTarget = null;
         this.state = 'wander'; return;
       }
-      // Stand beside the flower so the spout of the tipped can is over the
-      // foot of its stem, and a touch nearer the front so she is drawn
-      // in front of it.
-      const tx = constrain(f.wx - this.waterSide * GARDENER_SPOUT_PX / PX.W, 0.02, 0.98);
-      const ty = constrain(f.wy + 0.006, 0.04, 0.99);
+      // Stand beside the flower so the spout of the tipped can is over its
+      // bloom (see waterPlan), and a touch nearer the front so she is
+      // drawn in front of the plant.
+      const plan = this.waterPlan(f);
+      const tx = constrain((plan.x - this.waterSide * plan.pour.fwd) / PX.W, 0.02, 0.98);
+      const ty = constrain(f.wy + 0.004, 0.04, 0.99);
       const dx = tx - this.wx;
       const dy = ty - this.wy;
       const d = sqrt(dx * dx + dy * dy);
       if (d < 0.002) {
         this.dir = this.waterSide;
         this.state = 'water';
+        this.pour = plan.pour;
         this.waterTimer = 90;
         this.pourAngle = 0;
       } else {
@@ -252,17 +285,25 @@ class Gardener {
       if (stillThere) f.targetSize = min(f.targetSize + 0.002, f.restSize * 1.6);
 
       // once the can has tipped, water falls from the end of the spout
-      // onto the foot of the flower
+      // onto the top of the bloom: each drop stops where it meets the
+      // round of the petals (or the ground, if it falls outside them)
       if (this.pourAngle < -0.5 && frameCount % 3 === 0) {
         const p = worldToPx(this.wx, this.wy);
-        const spout = GARDENER_SPOUT_PX + floor(random(2));   // art pixels in front of her
+        const pour = this.pour || GARDENER_POUR_LOW;
+        const spout = pour.fwd + floor(random(2));   // art pixels in front of her
+        const x = this.dir > 0 ? p.x + spout : p.x - 1 - spout;
+        const y = p.y - pour.up;
+        let land = p.y;
+        if (stillThere) {
+          const b = f.headPos(), off = x - b.x;
+          if (abs(off) < b.r) land = min(p.y, b.y - sqrt(b.r * b.r - off * off) + 1);
+        }
         this.droplets.push({
-          x: this.dir > 0 ? p.x + spout : p.x - 1 - spout,
-          y: p.y - 9,
-          vx: this.dir * random(0, 0.08),
+          x, y,
+          vx: this.dir * random(0, 0.05),
           vy: random(0.1, 0.3),
-          life: 40,
-          ground: p.y,
+          life: 60,
+          ground: max(land, y + 3),
         });
       }
 
@@ -294,8 +335,11 @@ class Gardener {
       // just stand and wait — rain check at top exits this
 
     } else if (this.state === 'goInside') {
-      // along the sidewalk to the doors and through them: she waits inside for dawn
-      if (PEOPLE.goIn(this, this.speed * 1.5)) {
+      // a moment to say goodnight, then along the sidewalk to the doors
+      // and through them: she waits inside for dawn
+      if (this.nightPause > 0) {
+        this.nightPause--;
+      } else if (PEOPLE.goIn(this, this.speed * 1.5)) {
         this.state = 'inside';
         this.walkPhase = 0;
       }
@@ -315,7 +359,12 @@ class Gardener {
     const s = this.state;
     const walking = (s === 'wander' || s === 'approach' || s === 'flee' || s === 'shelter' || s === 'goInside');
     let leg = walking ? PEOPLE.walkFrame(this.walkPhase) : 'stand';
+    if (s === 'goInside' && this.nightPause > 0) leg = 'stand';
     if (s === 'goInside' && this.entering) leg = PEOPLE.backFrame(this.walkPhase);   // seen from behind
+    if (this.emerging) leg = PEOPLE.frontFrame(this.walkPhase);                      // seen from the front
+    // the can is lifted to head height to water anything with a bloom
+    const lifted = s === 'water' && this.pour === GARDENER_POUR_HIGH && this.pourAngle < -0.5;
+    const arm = lifted ? 'lift' : 'hold';
 
     // Worried and shouting when the goose is after her, glum in the rain
     let face = s === 'flee' ? 'open' : s === 'sheltering' ? 'flat' : 'smile';
@@ -330,8 +379,8 @@ class Gardener {
     c.globalAlpha = prevAlpha * alpha;
     PX.shadow(x, y, 14);
     const top = PEOPLE.top(y, L, leg);
-    const handX = PEOPLE.handX(x, dir, L, 'hold');
-    const handY = PEOPLE.handY(top, L, 'hold');
+    const handX = PEOPLE.handX(x, dir, L, arm);
+    const handY = PEOPLE.handY(top, L, arm);
 
     if (this.umbrellaOut) {
       // Rainbow umbrella: the canopy floats just above her hat, the shaft
@@ -343,10 +392,15 @@ class Gardener {
       PEOPLE.draw(x, y, L, dir, leg, 'hold', face);
     } else {
       // Watering can hanging from her hand, tipped forward while she waters
-      PEOPLE.draw(x, y, L, dir, leg, 'hold', face);
+      PEOPLE.draw(x, y, L, dir, leg, arm, face);
       const pouring = s === 'water' && this.pourAngle < -0.5;
-      // (from behind, going in at the doors, the can is hidden in front of her)
-      if (!(s === 'goInside' && this.entering)) {
+      // (going in or coming out at the doors, the can is not shown)
+      if (this.emerging || (s === 'goInside' && this.entering)) {
+        // nothing in her hands
+      } else if (lifted) {
+        // held out in front of her hat brim by the handle at its back
+        PEOPLE._spr('gardenerCan', x + dir * 9, handY - 2, 'high', dir < 0, null);
+      } else {
         PEOPLE._spr('gardenerCan', x + dir * 4, handY + 2, pouring ? 'pour' : 'carry', dir < 0, null);
       }
     }

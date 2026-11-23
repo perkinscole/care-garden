@@ -44,8 +44,10 @@ function pplLiftLeg(rows, left) {
 // extraSwap: more letter pairs to swap for the second half of the walk.
 // back: { torso, shoes } for the view from behind (walking in at the school
 // doors): its own torso with an arm down each side, on the standing legs
-// with a pair of matching shoes. Gives frames back, b0 and b1.
-function pplBody(torso, legs, extraSwap, back) {
+// with a pair of matching shoes. Gives frames back, b0 and b1. frontTorso
+// is the same view turned round (walking out of the doors toward us): it
+// stands on the same legs and gives frames front, f0 and f1.
+function pplBody(torso, legs, extraSwap, back, frontTorso) {
   let contact2 = pplSwap(legs.contact, 'p', 'P');
   let pass2 = pplSwap(legs.pass, 'p', 'P');
   for (const pair of (extraSwap || [])) {
@@ -64,6 +66,12 @@ function pplBody(torso, legs, extraSwap, back) {
     frames.back = rows;
     frames.b0 = pplLiftLeg(rows, true);
     frames.b1 = pplLiftLeg(rows, false);
+    if (frontTorso) {
+      const fr = [...frontTorso, ...rows.slice(frontTorso.length)];
+      frames.front = fr;
+      frames.f0 = pplLiftLeg(fr, true);
+      frames.f1 = pplLiftLeg(fr, false);
+    }
   }
   return frames;
 }
@@ -150,7 +158,18 @@ PX.define('adultBody', {
       '...okbbbbbko..',
     ],
     shoes: ['....oxxoxxo...', '....ooooooo...'],
-  }),
+  }, [
+    '....ooooooo...',
+    '...oSlctcsSo..',
+    '...oSlstssSo..',
+    '...oSsstssSo..',
+    '...oSsstssSo..',
+    '...oSsstssSo..',
+    '...oSsssssSo..',
+    '...ofsssssfo..',
+    '...ofsssssfo..',
+    '...okbbbbbko..',
+  ]),
 });
 
 // ── Adult in a jacket and skirt ───────────────────────
@@ -221,7 +240,18 @@ PX.define('adultSkirtBody', {
       '...okssssSko..',
     ],
     shoes: ['.....oxoxxo...', '.....oooooo...'],
-  }),
+  }, [
+    '....ooooooo...',
+    '...oSlcccsSo..',
+    '...oSlctcsSo..',
+    '...oSsscssSo..',
+    '...oSsssssSo..',
+    '...oSsssssSo..',
+    '...oSsssssSo..',
+    '...ofsssssfo..',
+    '...ofsssssfo..',
+    '...okssssSko..',
+  ]),
 });
 
 // ── Student ───────────────────────────────────────────
@@ -277,9 +307,13 @@ function pplKidFrames(grow) {
     '...ofsssSSfo..',
     '...oksssSSko..',
   ];
+  // from the front: the same T-shirt with a little neckline
+  const frontTorso = backTorso.slice();
+  frontTorso[1] = '...oSlskssSo..';
   if (grow > 0) {
     torso.splice(4, 0, torso[4]);
     backTorso.splice(4, 0, backTorso[4]);
+    frontTorso.splice(4, 0, frontTorso[4]);
     legs.stand.splice(3, 0, legs.stand[3]);
     legs.contact.splice(3, 0, legs.contact[3]);
     legs.pass.splice(2, 0, legs.pass[2]);
@@ -291,7 +325,7 @@ function pplKidFrames(grow) {
   const frames = pplBody(torso, legs, ['gG'], {
     torso: backTorso,
     shoes: ['....oxxoxxo...', '....ooooooo...'],
-  });
+  }, frontTorso);
   // The crouch is the same for every height: it is 10 rows tall
   frames.crouch = [
     '.....ooooo....',
@@ -368,6 +402,7 @@ PX.define('gardenerBody', {
 // k the hand, S a shadow that separates the arm from the chest.
 //   down / fwd / back : the walking swing
 //   hold              : elbow bent, hand out in front (carrying something)
+//   lift              : hand up at head height (the Gardener watering a tall bloom)
 //   wave1 / wave2     : arm up, waving
 PX.define('adultArm', {
   pal: PPL_PAL,
@@ -425,6 +460,23 @@ PX.define('adultArm', {
       '....ooooooooo.',
       PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK,
     ],
+    // elbow out in front, forearm straight up: lifting the watering can
+    // to head height (the forearm is slim so it does not hide her eye)
+    lift: [
+      '..........oooo',
+      '..........okko',
+      '...........ofo',
+      '...........ofo',
+      '...........ofo',
+      '...........ofo',
+      '...........ofo',
+      '....oo.....ofo',
+      '...olsoooooofo',
+      '...olssssssffo',
+      '...osssssssoo.',
+      '....ooooooo...',
+      PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK,
+    ],
     wave1: [
       PPL_BLANK,
       '.oo...........',
@@ -455,8 +507,9 @@ PX.define('adultArm', {
 });
 
 // Student arm: shorter. `carry` holds a picked flower out in front,
-// `reach` stretches straight out to pet the ram and `pick` reaches down
-// to the ground from a crouch.
+// `reach` stretches straight out to pet the ram or take hold of a bloom,
+// `up` reaches for a bloom above the shoulder and `pick` reaches down to
+// the ground from a crouch.
 PX.define('kidArm', {
   pal: Object.assign({}, PPL_PAL, { f: PAL.sn2 }),
   anchor: [7, 6],
@@ -503,16 +556,31 @@ PX.define('kidArm', {
       '....ooooooooo.',
       PPL_BLANK, PPL_BLANK, PPL_BLANK,
     ],
+    // hand low and well out in front, so the picked flower it holds
+    // stands in front of the chest and clear of the chin
     carry: [
       PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK,
       '....oo........',
       '...olso.......',
       '...osso.......',
       '....offoo.....',
-      '.....ooffoo...',
-      '.......ooffo..',
-      '.........okko.',
+      '.....offfoo...',
+      '......oofffoo.',
+      '........ooffko',
+      '..........oooo',
+    ],
+    // reaching up and forward to a bloom above shoulder height
+    up: [
+      PPL_BLANK, PPL_BLANK,
       '..........oo..',
+      '.........okko.',
+      '........offo..',
+      '.......offo...',
+      '....oooffo....',
+      '...olssfo.....',
+      '...ossoo......',
+      '....oo........',
+      PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK,
     ],
     reach: [
       PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK, PPL_BLANK,
@@ -611,6 +679,18 @@ PX.define('peopleHead', {
       'okkkkkkkko',
       'oKkkkmmkko',
       '.oKkkkkko.',
+      '..oooooo..',
+    ],
+    // seen from the front, walking out of the school toward us
+    front: [
+      '..oooooo..',
+      '.okkkkkko.',
+      'okkkkkkkko',
+      'okkekkekko',
+      'okkekkekko',
+      'okkkkkkkko',
+      'oKkmkkmkKo',
+      '.oKkmmkKo.',
       '..oooooo..',
     ],
     // seen from behind
@@ -871,6 +951,118 @@ PX.define('peopleHair', {
       '................',
       '................',
     ],
+    // From the front (see PEOPLE.FRONT_HAIR): a fringe across the forehead,
+    frontShort: [
+      '................',
+      '.....oooooo.....',
+      '....ohhihhho....',
+      '...ohhihhhhho...',
+      '...ohhhhhhhho...',
+      '...oh......ho...',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+    ],
+    // hair to the chin on both sides,
+    frontBob: [
+      '................',
+      '.....oooooo.....',
+      '....ohhihhho....',
+      '...ohhihhhhho...',
+      '..ohhhhhhhhhho..',
+      '..ohh......hho..',
+      '..ohh......hho..',
+      '..ohh......hHo..',
+      '..ohH......HHo..',
+      '..oHo......oHo..',
+      '...o........o...',
+      '................',
+      '................',
+    ],
+    // hair to the shoulders,
+    frontLong: [
+      '................',
+      '.....oooooo.....',
+      '....ohhihhho....',
+      '...ohhihhhhho...',
+      '..ohhhhhhhhhho..',
+      '..ohh......hho..',
+      '..ohh......hho..',
+      '..ohh......hho..',
+      '..ohh......hHo..',
+      '..ohh......hHo..',
+      '..ohH......HHo..',
+      '..oHo......oHo..',
+      '...o........o...',
+    ],
+    // big curls all round,
+    frontCurly: [
+      '.....oooooo.....',
+      '...oohhhhhhoo...',
+      '..ohhihhhhhhho..',
+      '..ohihhhhhhhho..',
+      '..ohhhhhhhhhho..',
+      '..ohh......hho..',
+      '..ohh......hho..',
+      '..oHo......oHo..',
+      '...o........o...',
+      '................',
+      '................',
+      '................',
+      '................',
+    ],
+    // a ponytail showing at one side,
+    frontPony: [
+      '................',
+      '.....oooooo.....',
+      '....ohhihhho....',
+      '.ooohhihhhhho...',
+      'ohhohhhhhhhho...',
+      'ohhoh......ho...',
+      'oHho............',
+      '.oHo............',
+      '..o.............',
+      '................',
+      '................',
+      '................',
+      '................',
+    ],
+    // a bun on top,
+    frontBun: [
+      '......oooo......',
+      '.....ohhhho.....',
+      '....ohhihhho....',
+      '...ohhihhhhho...',
+      '...ohhhhhhhho...',
+      '...oh......ho...',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+    ],
+    // and a bald head with hair at the sides.
+    frontFringe: [
+      '................',
+      '................',
+      '................',
+      '................',
+      '...oh......ho...',
+      '...oh......ho...',
+      '...oH......Ho...',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+    ],
     // bald on top with hair round the back and sides
     fringe: [
       '................',
@@ -925,6 +1117,38 @@ PX.define('peopleHeadwear', {
       '................',
       '................',
       '................',
+      '................',
+      '................',
+      '................',
+    ],
+    // the cap from the front: the peak shades the forehead
+    capFront: [
+      '................',
+      '.....oooooo.....',
+      '....oaaaaaao....',
+      '...oaaaaaaaao...',
+      '..oAAAAAAAAAAo..',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+    ],
+    // the beard from the front
+    beardFront: [
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '....b......b....',
+      '....bbbmmbbb....',
+      '.....bbbbbb.....',
       '................',
       '................',
       '................',
@@ -1025,30 +1249,44 @@ PX.define('kidBackpackBack', {
 });
 
 // The Gardener's watering can. The anchor is the top of the handle, where
-// her hand holds it. `carry` hangs level; `pour` tips the spout down.
+// her hand holds it. `carry` hangs level; `pour` tips the spout down;
+// `high` is the can lifted to head height to shower a bloom.
 PX.define('gardenerCan', {
   pal: { o: PAL.ink, w: PAL.wa3, W: PAL.wa2, B: PAL.sl3, h: PAL.wa1 },
   anchor: [4, 1],
   frames: {
     carry: [
-      '...ooo......',
-      '..o...o...oo',
-      '..o...o..oWo',
-      '.ooooooooWo.',
-      'oWhwwwwwwo..',
-      'oWwwwwwBo...',
-      'owwwwwBBo...',
-      '.ooooooo....',
+      '...ooo.......',
+      '..o...o...oo.',
+      '..o...o..oWo.',
+      '.ooooooooWo..',
+      'oWhwwwwwwo...',
+      'oWwwwwwBo....',
+      'owwwwwBBo....',
+      '.ooooooo.....',
     ],
     pour: [
-      '...ooo......',
-      '..o...oo....',
-      '..o.oohwo...',
-      '..ooWhwwwo..',
-      '.oWwwwwwwwo.',
-      '.owwwwwBowwo',
-      '..owwBBo.oWo',
-      '...oooo..ooo',
+      '...ooo.......',
+      '..o...oo.....',
+      '..o.oohwo....',
+      '..ooWhwwwo...',
+      '.oWwwwwwwwo..',
+      '.owwwwwBowwo.',
+      '..owwBBo.oWo.',
+      '...oooo..ooo.',
+    ],
+    // Lifted to head height and held out in front by the handle at its
+    // back (the left edge, three rows down: gardener.js puts her fist
+    // there), tipped a little so water showers from the raised spout.
+    high: [
+      '.............',
+      '.ooo......oo.',
+      'oo.oooo..oWWo',
+      'o.oWhwwooWoo.',
+      'oo.owwwwwo...',
+      '.ooowwwwBo...',
+      '...oowBBo....',
+      '.....ooo.....',
     ],
   },
 });
@@ -1162,6 +1400,21 @@ const PEOPLE = {
     ch.wy -= Math.max(0.0012, speed * 0.6);
     return ch.wy <= this.DOOR_WY;
   },
+  // The other way round: someone who starts on the threshold (set
+  // ch.emerging = true when you put them there) walks straight out toward
+  // us to the sidewalk before turning to go where they are going. Draw
+  // them with the 'f0'/'f1' front frames while this returns true.
+  comeOut(ch, speed) {
+    if (!ch.emerging) return false;
+    ch.wy += Math.max(0.0012, speed * 0.6);
+    ch.walkPhase += 0.22;            // a brisk little march down the step
+    if (ch.wy >= this.DOOR_FRONT_WY) ch.emerging = false;
+    return true;
+  },
+  // Body frame for someone walking out of the doors, from their walk phase.
+  frontFrame(phase) {
+    return Math.floor(phase / Math.PI) % 2 === 0 ? 'f0' : 'f1';
+  },
   // Opacity of someone on their way in: solid until the last few steps.
   doorAlpha(ch) {
     if (!ch.entering) return 1;
@@ -1176,6 +1429,35 @@ const PEOPLE = {
     short: 'backShort', buzz: 'backShort', neat: 'backShort', swoop: 'backShort',
     curly: 'backBob', bob: 'backBob', long: 'backLong', pony: 'backPony',
     bun: 'backBun', fringe: 'backFringe',
+  },
+  // and which front view
+  FRONT_HAIR: {
+    short: 'frontShort', buzz: 'frontShort', neat: 'frontShort', swoop: 'frontShort',
+    curly: 'frontCurly', bob: 'frontBob', long: 'frontLong', pony: 'frontPony',
+    bun: 'frontBun', fringe: 'frontFringe',
+  },
+
+  // Speech bubble for someone who may leave while it is still showing.
+  // It follows getPos() (art pixels, just above the speaker's head) until
+  // gone() says the speaker has left: turned in at the doors, been
+  // removed, ducked underground. From then on getPos keeps returning the
+  // last good position, so the bubble stays where it was instead of riding
+  // into the doorway, and it starts its fade-out straight away rather
+  // than hanging there over nobody.
+  say(text, getPos, gone) {
+    let last = null;
+    const bubble = new SpeechBubble(text, () => {
+      if (!last || !gone()) last = getPos();
+      else if (bubble.age < bubble.duration - 30) bubble.age = bubble.duration - 30;
+      return last;
+    });
+    speechBubbles.push(bubble);
+    return bubble;
+  },
+  // The usual test for say(): true once a person has turned in at the
+  // doors, finished, or is waiting inside.
+  hasLeft(ch) {
+    return !!(ch.entering || ch.done || ch.state === 'inside' || ch.state === 'done');
   },
 
   // Skin tones, lightest first. k skin, K its shadow, m the mouth, w/e the eyes.
@@ -1228,9 +1510,11 @@ const PEOPLE = {
 
   // Where the hand is in each arm frame, as [column offset, row offset]
   // from the person's x and the top of their shoulders (facing right).
+  // (`carry` is the point just in front of the fist where the bottom of
+  // the tiny flower's stem goes.)
   HANDS: {
-    adultArm: { down: [-3, 9], fwd: [0, 8], back: [-6, 8], hold: [4, 4], wave1: [-6, -5], wave2: [-4, -6] },
-    kidArm: { down: [-3, 6], fwd: [-1, 5], back: [-5, 5], hold: [4, 3], carry: [4, 6], reach: [4, 1], pick: [1, 6], wave1: [-6, -5], wave2: [-4, -5] },
+    adultArm: { down: [-3, 9], fwd: [0, 8], back: [-6, 8], hold: [4, 4], lift: [5, -6], wave1: [-6, -5], wave2: [-4, -6] },
+    kidArm: { down: [-3, 6], fwd: [-1, 5], back: [-5, 5], hold: [4, 3], carry: [6, 8], reach: [4, 1], up: [4, -3], pick: [1, 6], wave1: [-6, -5], wave2: [-4, -5] },
   },
 
   _o: { frame: 0, flip: false, pal: null },   // reused options object for PX.spr
@@ -1334,8 +1618,8 @@ const PEOPLE = {
   // Draws a person standing on art pixel (x, y).
   //   dir   1 facing right, -1 facing left
   //   leg   body frame: 'stand', 'w0'..'w3', 'crouch' (students only), or
-  //         'back', 'b0', 'b1' for the view from behind (arm and face are
-  //         then ignored)
+  //         'back', 'b0', 'b1' for the view from behind, or 'front', 'f0',
+  //         'f1' for the view from the front (arm and face are then ignored)
   //   arm   'walk' to swing with the legs, or an arm frame name
   //   face  'smile' | 'blink' | 'open' | 'flat'
   //   alpha 0..1 for fading in and out at the school door
@@ -1350,6 +1634,11 @@ const PEOPLE = {
     const top = this.top(y, L, leg);
     if (leg === 'back' || leg === 'b0' || leg === 'b1') {
       this._drawBack(x, y, L, leg, top);
+      c.globalAlpha = prevAlpha;
+      return;
+    }
+    if (leg === 'front' || leg === 'f0' || leg === 'f1') {
+      this._drawFront(x, y, L, leg, top);
       c.globalAlpha = prevAlpha;
       return;
     }
@@ -1397,6 +1686,30 @@ const PEOPLE = {
     if (L.bald && !L.hair) this._spr('peopleHeadwear', x, hy, 'shine', false, L.shinePal);
     if (L.hair) this._spr('peopleHair', x, hy, this.BACK_HAIR[L.hair] || 'backShort', false, L.hairPal);
     if (L.capPal) this._spr('peopleHeadwear', x, hy, 'capBack', false, L.capPal);
+    if (L.sunHat) this._spr('gardenerHat', x, hy, 0, false, null);
+  },
+
+  // The view from the front, for stepping out of the school doors: both
+  // eyes, hair either side of the face, an arm at each side and only the
+  // straps of a backpack showing.
+  _drawFront(x, y, L, leg, top) {
+    if (L.kind === 'gardener') {
+      this._spr(L.body, x, y, 'stand', false, L.bodyPal);
+      this._spr(L.arm, x, top, 'down', false, L.armPal);
+      this._spr(L.arm, x, top, 'down', true, L.armPal);
+    } else {
+      this._spr(L.body, x, y, leg, false, L.bodyPal);
+    }
+    if (L.packPal) {
+      PX.rect(x - 2, top + 1, 1, 4, L.packPal.A);
+      PX.rect(x + 2, top + 1, 1, 4, L.packPal.A);
+    }
+    const hy = top + 1;
+    this._spr('peopleHead', x, hy, 'front', false, L.skinPal);
+    if (L.bald && !L.hair) this._spr('peopleHeadwear', x, hy, 'shine', false, L.shinePal);
+    if (L.hair) this._spr('peopleHair', x, hy, this.FRONT_HAIR[L.hair] || 'frontShort', false, L.hairPal);
+    if (L.beardPal) this._spr('peopleHeadwear', x, hy, 'beardFront', false, L.beardPal);
+    if (L.capPal) this._spr('peopleHeadwear', x, hy, 'capFront', false, L.capPal);
     if (L.sunHat) this._spr('gardenerHat', x, hy, 0, false, null);
   },
 

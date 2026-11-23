@@ -60,7 +60,7 @@ class MrPerkins {
           this.spoken = true;
           const pRef = this;
           const phrase = PERKINS_PHRASES[floor(random(PERKINS_PHRASES.length))];
-          speechBubbles.push(new SpeechBubble(phrase, () => PEOPLE.bubblePos(pRef.wx, pRef.wy, pRef.look)));
+          PEOPLE.say(phrase, () => PEOPLE.bubblePos(pRef.wx, pRef.wy, pRef.look), () => pRef.done);
         }
       }
 

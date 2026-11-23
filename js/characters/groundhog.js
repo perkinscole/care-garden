@@ -54,14 +54,16 @@ class Groundhog {
         this.lookTimer = floor(random(20, 60));
         // occasionally say something
         if (random() < 0.3) {
+          // (the bubble fades where it is once he has ducked back down)
           const phrases = ['!', '...', '*sniff*', 'oh.', '?'];
-          speechBubbles.push(new SpeechBubble(
+          PEOPLE.say(
             phrases[floor(random(phrases.length))],
             () => {
               const p = worldToPx(this.wx, this.wy);
               return { x: p.x, y: p.y - GROUNDHOG_ROWS - 2 };
-            }
-          ));
+            },
+            () => this.state === 'hiding' || this.state === 'closing' || this.done
+          );
         }
       }
       if (this.stayTimer <= 0) {

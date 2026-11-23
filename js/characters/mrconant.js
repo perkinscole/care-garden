@@ -61,7 +61,7 @@ class MrConant {
           this.spoken = true;
           const self = this;
           const phrase = CONANT_PHRASES[floor(random(CONANT_PHRASES.length))];
-          speechBubbles.push(new SpeechBubble(phrase, () => PEOPLE.bubblePos(self.wx, self.wy, self.look)));
+          PEOPLE.say(phrase, () => PEOPLE.bubblePos(self.wx, self.wy, self.look), () => self.done);
         }
       }
 
