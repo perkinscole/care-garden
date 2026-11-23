@@ -97,4 +97,4 @@ class MrConant {
 G3.cardArt('mrconant', () => {
   const m = PEOPLE3.build(conantLook());
   return PEOPLE3.pose(m, { side: 'L', arm: 'hold', arm2: 'down', snap: true });
-});
+}, { w: 32, h: 52 });

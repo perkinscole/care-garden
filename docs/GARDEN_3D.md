@@ -159,7 +159,9 @@ Delete the old 2D drawing code you replace.
   so each doorway is about 1.2 blocks wide and 2.25 tall, spanning x from
   0.1 to 1.3 (and mirrored), with a dark open inside that people walk into
   and out of. `PEOPLE.goIn` / `PEOPLE.comeOut` in `js/art/people_art.js`
-  hold the walking logic in world coordinates.
+  hold the walking logic in world coordinates: people walk right into
+  the doorway to `PEOPLE.DOOR_IN_WY` (z about -0.8), where the dark hall
+  hides them, and come out from there.
 - **Flowers** keep their fields (`wx`, `wy`, `hsl`, `type`, `imgs`, `size`,
   `targetSize`, `restSize`, `baseSize`, `age`, `boost()`, `dispose()`,
   `blooms`). `footPos()`, `headPos(i)` and `height()` still answer in art

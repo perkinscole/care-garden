@@ -505,21 +505,22 @@ const G3 = {
     const na = this.night, arc = this.dayArc(dayT);
     const tc = this._tc || (this._tc = new THREE.Color());
     tc.setRGB(tint.r / 255, tint.g / 255, tint.b / 255);
-    const ta = Math.min(1, tint.a * 2.2);
+    // Night keeps its blue cast but must stay easy to see on a TV in a lit hallway
+    const ta = Math.min(0.6, tint.a * 1.6);
     // The sun crosses from the left (east) to the right; the moon stands
     // high on the left. Both shine a little from the viewer's side so the
     // faces we can see are the lit ones.
     if (na < 0.6) this.sun.position.set(-30 + 60 * arc, 12 + 26 * Math.sin(arc * Math.PI), this.GD * 0.4 + 22);
     else this.sun.position.set(-18, 34, this.GD * 0.4 + 20);
     this.sun.color.setRGB(1, 1, 1).lerp(tc, ta * 0.75);
-    this.sun.intensity = (0.72 - 0.47 * na) * (1 - 0.45 * storm);
+    this.sun.intensity = (0.72 - 0.3 * na) * (1 - 0.45 * storm);
     this.hemi.color.setRGB(1, 1, 1).lerp(tc, ta);
     this.hemi.groundColor.setRGB(0.55, 0.62, 0.42).lerp(tc, ta);
-    this.hemi.intensity = (0.5 - 0.1 * na) * (1 - 0.2 * storm);
+    this.hemi.intensity = (0.5 + 0.22 * na) * (1 - 0.2 * storm);
     this.fill.color.copy(this.hemi.color);
-    this.fill.intensity = 0.14 - 0.03 * na;
+    this.fill.intensity = 0.14 + 0.06 * na;
     // Photos keep their own colours; they only dim with the evening.
-    const dim = 1 - 0.42 * na - 0.12 * storm * (1 - na);
+    const dim = 1 - 0.3 * na - 0.12 * storm * (1 - na);
     for (const m of this._photoMats) m.color.setRGB(dim * (1 - 0.1 * na), dim * (1 - 0.06 * na), dim);
   },
 };

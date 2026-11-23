@@ -1,10 +1,10 @@
-# CARE Garden
+# CARE Garden 2
 
 An interactive garden simulation built for **Robert Adams Middle School** in Holliston, MA. Students smile at a webcam to grow flowers, building a shared CARE score displayed on a large TV in the school.
 
 Every smile plants a flower with the student's face at its center. Smile together and you'll grow a group flower. The garden lives and breathes on its own — characters wander, weather changes, and the sun rises and sets throughout the day.
 
-The whole garden is drawn as pixel art.
+**CARE Garden 2** is the 3D version: the same garden, characters and behaviour as the original pixel-art CARE Garden (still on the `main` branch), rebuilt as a block world, like a voxel sandbox game. The school, the town, the people, the animals and the flowers are all made of boxes. The smile photos are not: every face stays a real photo.
 
 ![The CARE Garden by day](docs/screenshots/day.png)
 
@@ -21,7 +21,7 @@ The whole garden is drawn as pixel art.
 ## What You'll See
 
 ### The Garden
-A living world with a full day/night cycle (~15 minutes per day), dynamic weather (sun, clouds, rain, storms), and a pixel-art school building modeled after Robert Adams Middle School. The town of Holliston appears in the background with its church, town hall, and rail trail.
+A living world with a full day/night cycle (~15 minutes per day), dynamic weather (sun, clouds, rain, storms), and a block-built school modeled after Robert Adams Middle School. The town of Holliston appears in the background with its church, town hall, and rail trail.
 
 ### The Characters
 
@@ -65,7 +65,7 @@ Open **http://localhost:8000** in Chrome. You'll need to allow camera access. `s
 
 > **Note:** The webcam requires HTTPS or localhost. If hosting remotely, use a service that provides HTTPS (GitHub Pages, Netlify, etc.). Without `server.py` the counts are kept in the browser only.
 
-The libraries load from their CDNs and fall back to the copies in this folder if the network is down. The face-detection models are still downloaded at startup, so the camera features need an internet connection.
+The 3D garden is drawn with three.js (`three.min.js`, bundled, MIT licence) and needs WebGL, which any recent Chrome has. The other libraries load from their CDNs and fall back to the copies in this folder if the network is down. The face-detection models are still downloaded at startup, so the camera features need an internet connection.
 
 ### Trying things without a camera
 

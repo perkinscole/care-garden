@@ -413,4 +413,4 @@ G3.cardArt('gardener', () => {
   can.rotation.x = 0.35;
   PEOPLE3.pose(m, { side: 'L', arm: 'pour', arm2: 'down', snap: true });
   return m;
-});
+}, { w: 32, h: 52 });

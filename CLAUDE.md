@@ -40,11 +40,11 @@ node tools/shot.js "http://localhost:8000/tools/sprites.html?zoom=8" sprites.png
 | `js/constants.js` | Config: flower types, character cards, phrases, sky and tint keyframes |
 | `js/globals.js` | All mutable global state |
 | `js/world.js` | Coordinate helpers: `worldToPx()`, `worldToScreen()` (camera projections), `nightAmount()` |
-| `js/scene.js` | Sky layer (sun, moon, stars, clouds), lawn, grass, trees, fence, school, fireflies |
-| `js/town.js` | Town backdrop with shops, cars, walkers, bikers |
-| `js/weather.js` | Weather state machine (sunny/cloudy/rainy/stormy/clearing) |
-| `js/flowers.js` | `Flower` class with petal types, group flowers (2-6 faces) |
-| `js/creatures.js` | `Butterfly`, `Bee`, `Bird` classes |
+| `js/scene.js` | 3D lawn, grass, trees, fence, school (`SCHOOL3` sizes), fireflies; `skyStops()` |
+| `js/town.js` | 3D town backdrop: terraces, shops, church, town hall, cars, walkers, bikers |
+| `js/weather.js` | Weather state machine, plus the 3D sun, moon, stars, clouds, rain, puddles, lightning, rainbow; 2D forecast strip |
+| `js/flowers.js` | `Flower` class: 3D block blooms around real photos, group flowers (2-6 faces), `head3`/`foot3` |
+| `js/creatures.js` | `Butterfly`, `Bee`, `Bird` classes (3D models placed from screen-space logic) |
 | `js/ui.js` | Smile stats (localStorage), gallery, CARE score, confetti, `SpeechBubble` |
 | `js/facedetection.js` | Face detection, smile tracking, face brackets, hat/crown sprites |
 | `js/characters/ram.js` | Ram — grazes flowers, poops that become flowers |

@@ -116,4 +116,4 @@ class Principal {
 G3.cardArt('principal', () => {
   const m = PEOPLE3.build(principalLook());
   return PEOPLE3.pose(m, { side: 'L', arm: 'wave', arm2: 'down', t: 2, snap: true });
-});
+}, { w: 32, h: 52 });

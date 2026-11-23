@@ -3,17 +3,19 @@
 // Author: Cole Perkins
 // Date Created: November 22, 2026
 // Last Modified: November 22, 2026
-// Description: Pixel-art sprite definitions for the gardener, students, teachers and staff.
-//   Every person is built from the same small kit of layers: a body
-//   (torso + legs, with walk frames), an arm, a head, a hairstyle and
-//   optional extras (cap, sun hat, beard, backpack). Each layer is
-//   recoloured from short fixed lists of skin tones, hair colours and
-//   clothes, so a crowd of students all look different without needing
-//   a sprite set each. PEOPLE.look() describes one person and
-//   PEOPLE.draw() stacks the layers.
+// Description: Who the gardener, students, teachers and staff are.
+//   PEOPLE.look() describes one person (skin tone, hairstyle, clothes,
+//   cap, backpack...) from short fixed lists, so a crowd of students all
+//   look different; PEOPLE3 (js/g3_people.js) builds the 3D box person
+//   from it. PEOPLE also holds the walking in and out at the school
+//   doors and the speech-bubble helpers.
+//
+//   The 2D pixel-art sprites of the same people from the first CARE
+//   Garden are still defined here (tools/sprites.html shows them); the
+//   garden no longer draws them.
 //
 //   No p5.js functions are used in this file, so tools/sprites.html
-//   can show every sprite on its own.
+//   can load it on its own.
 // ================================================================
 
 // ── Building frames from parts ────────────────────────

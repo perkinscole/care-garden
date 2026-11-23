@@ -97,4 +97,4 @@ class MrPerkins {
 G3.cardArt('mrperkins', () => {
   const m = PEOPLE3.build(perkinsLook());
   return PEOPLE3.pose(m, { side: 'L', arm: 'wave', arm2: 'down', t: 2, snap: true });
-});
+}, { w: 32, h: 52 });
