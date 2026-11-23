@@ -10,10 +10,14 @@
 
 // Initializes canvas, webcam, face detection, sounds, characters, and world state
 function setup() {
+  readDebugParams();
+  if (DEBUG.seed !== null) randomSeed(DEBUG.seed);
+  pixelDensity(1);   // one canvas pixel per screen pixel keeps the art grid crisp
   canvas = createCanvas(windowWidth, windowHeight);
   canvas.id("canvas");
   colorMode(HSL, 360, 100, 100, 255);
-  document.getElementById('canvas').style.fontFamily = 'Nunito, sans-serif';
+  PX.resize(drawingContext, width, height);
+  PX.loadFonts();
   loadSmileStats();
 
   video = createCapture(VIDEO, function(stream) {
@@ -115,6 +119,7 @@ rain= loadSound('sounds/rain.mp3', () => { rain.setVolume(0.2); });
   mrConantTimer = floor(random(5400, 10800));
 
   panelCycle = getPanelCycle();
+  applyDebugParams();
 }
 
 // Builds the panel rotation order: gallery first, then each character card
@@ -159,19 +164,6 @@ function draw() {
   shineVol += ((h ? 0.1 : 0.0) - shineVol) * 0.02;
   if (shine) shine.setVolume(constrain(shineVol, 0.0, 0.3));
 
-  // Sky gradient — driven by day/night keyframes
-  noStroke();
-  const skyHue    = lerpKeyframes(SKY_KEYFRAMES, timeOfDay, 'hue');
-  const skySat    = lerpKeyframes(SKY_KEYFRAMES, timeOfDay, 'sat');
-  const skyLitTop = lerpKeyframes(SKY_KEYFRAMES, timeOfDay, 'litTop');
-  const skyLitBot = lerpKeyframes(SKY_KEYFRAMES, timeOfDay, 'litBot');
-  for (let i = 0; i < 10; i++) {
-    const y0 = map(i,   0, 10, 0, splitY());
-    const y1 = map(i+1, 0, 10, 0, splitY());
-    fill(skyHue, lerp(skySat, skySat - 10, i/10), lerp(skyLitTop, skyLitBot, i/10), 255);
-    rect(0, y0, width, y1 - y0);
-  }
-
   // Rebuild separation positions before updates
   characterPositions = [
     { id: 'ram',      wx: ram.wx,      wy: ram.wy },
@@ -183,19 +175,30 @@ function draw() {
     characterPositions.push({ id: 'kid_' + i, wx: kids[i].wx, wy: kids[i].wy });
   }
 
-  // Scene
-  drawStarsAndMoon();
-  drawSky();
-  drawTown();
-  drawWeatherForecast();
-  drawWeather();
-  drawGround();
+  // ── Garden render ───────────────────────────────────
+  // The garden is painted back to front in art pixels straight onto a
+  // cleared canvas. After the characters are in, the whole thing is tinted
+  // for time of day, glowing things are added on top, and only then is the
+  // sky slipped in *behind* everything, so the tint never dulls the sunset.
+  const gctx = drawingContext;
+  gctx.clearRect(0, 0, width, splitY());
+  PX.tick = frameCount;
+  PX.begin();
+
+  const pixelSky = typeof drawSkyLayer === 'function';
+  if (!pixelSky) {            // legacy sky, until scene.js provides drawSkyLayer()
+    PX.call(drawStarsAndMoon);
+    PX.call(drawSky);
+  }
+  PX.call(drawTown);
+  if (typeof drawWeatherSky !== 'function') PX.call(drawWeather);
+  PX.call(drawGround);
   //drawHorizonLandmarks();
-  drawTrees();
-  drawGrass();
-  drawSchool();
+  PX.call(drawTrees);
+  PX.call(drawGrass);
+  PX.call(drawSchool);
   updatePuddles();
-  drawPuddles();
+  PX.call(drawPuddles);
   updateWeather();
 
   // Updates
@@ -284,43 +287,52 @@ if (groundhog) {
 
   // Depth-sorted render list
   let renderList = [];
-  for (let f of flowers)  renderList.push({ wy: f.wy,          draw: () => f.draw() });
-  renderList.push(         { wy: ram.wy,      draw: () => ram.draw() });
-  renderList.push(         { wy: gardener.wy, draw: () => gardener.draw() });
-  renderList.push(         { wy: goose.wy,    draw: () => goose.draw() });
-  renderList.push(         { wy: cat.wy,      draw: () => cat.draw() });
-  if (mrPerkins) renderList.push({ wy: mrPerkins.wy, draw: () => mrPerkins.draw() });
-  if (mrConant) renderList.push({ wy: mrConant.wy, draw: () => mrConant.draw() });
-  for (let k of kids)    renderList.push({ wy: k.wy, draw: () => k.draw() });
-  for (let r of rabbits) renderList.push({ wy: r.wy, draw: () => r.draw() });
-  if (groundhog) renderList.push({ wy: groundhog.wy, draw: () => groundhog.draw() });
-  if (principal) renderList.push({ wy: principal.wy, draw: () => principal.draw() });
-  for (let tc of teachers)     renderList.push({ wy: tc.wy, draw: () => tc.draw() });
-  for (let ak of arrivalKids)  renderList.push({ wy: ak.wy, draw: () => ak.draw() });
+  for (let f of flowers)  renderList.push({ wy: f.wy, obj: f });
+  renderList.push({ wy: ram.wy,      obj: ram });
+  renderList.push({ wy: gardener.wy, obj: gardener });
+  renderList.push({ wy: goose.wy,    obj: goose });
+  renderList.push({ wy: cat.wy,      obj: cat });
+  if (mrPerkins) renderList.push({ wy: mrPerkins.wy, obj: mrPerkins });
+  if (mrConant)  renderList.push({ wy: mrConant.wy,  obj: mrConant });
+  for (let k of kids)    renderList.push({ wy: k.wy, obj: k });
+  for (let r of rabbits) renderList.push({ wy: r.wy, obj: r });
+  if (groundhog) renderList.push({ wy: groundhog.wy, obj: groundhog });
+  if (principal) renderList.push({ wy: principal.wy, obj: principal });
+  for (let tc of teachers)     renderList.push({ wy: tc.wy, obj: tc });
+  for (let ak of arrivalKids)  renderList.push({ wy: ak.wy, obj: ak });
 
   renderList.sort((a, b) => a.wy - b.wy);
-  for (let item of renderList) item.draw();
+  for (let item of renderList) PX.drawEntity(item.obj);
+
+  // Time-of-day tint over everything painted so far, then the glows
+  applyGardenTint();
+  PX.flushLights();
+
+  // Sky goes in last, behind the world
+  drawSkyBehind(pixelSky);
 
   // Speech bubbles
   speechBubbles = speechBubbles.filter(b => b.update());
-  for (let b of speechBubbles) b.draw();
+  for (let b of speechBubbles) PX.drawEntity(b);
 
   // Foreground rain — renders over characters for depth
-  drawForegroundRain();
+  PX.call(typeof drawWeatherFront === 'function' ? drawWeatherFront : drawForegroundRain);
 
   // Flying creatures above ground (fade out at night)
   const creatureAlpha = 1.0 - nightAmount();
   if (creatureAlpha > 0.05) {
-    push();
     drawingContext.globalAlpha = creatureAlpha;
-    for (let c of creatures) c.draw();
+    for (let c of creatures) PX.drawEntity(c);
     drawingContext.globalAlpha = 1.0;
-    pop();
   }
-  for (let b of birds_flock) b.draw();
+  for (let b of birds_flock) PX.drawEntity(b);
 
   // Fireflies at night
-  updateAndDrawFireflies();
+  PX.call(updateAndDrawFireflies);
+
+  PX.call(drawWeatherForecast);
+  drawGardenLabels();
+  PX.end();
 
   // Rabbit spawning
   if (frameCount % 900 === 0 && rabbits.length < 2 && random() < 0.5) {
@@ -336,40 +348,43 @@ if (groundhog) {
   rect(0, splitY(), width, height - splitY());
 
   if (video && videoW && videoH) {
-    const destH  = height - splitY();
-    const minPanelWidth = min(150, width * 0.15);
-    const availableVideoW = width - (minPanelWidth * 2);
-    const videoAspect  = videoW / videoH;
-    const screenAspect = availableVideoW / destH;
+    // The video rectangle is snapped to the art grid so the pixel panels
+    // on either side butt up against it exactly.
+    const destH  = PX.SH - PX.H;                       // art pixels
+    const minPanel = Math.min(Math.round(150 / PX.S), Math.round(PX.W * 0.15));
+    const availW = PX.W - minPanel * 2;
+    const videoAspect = videoW / videoH;
 
-    let displayW, displayH;
-    if (videoAspect > screenAspect) {
-      displayW = availableVideoW;
-      displayH = availableVideoW / videoAspect;
-    } else {
-      displayH = destH;
-      displayW = destH * videoAspect;
-    }
+    let aw, ah;
+    if (videoAspect > availW / destH) { aw = availW; ah = Math.round(availW / videoAspect); }
+    else                              { ah = destH;  aw = Math.round(destH * videoAspect); }
+    const ax = Math.floor((PX.W - aw) / 2);
+    const ay = Math.floor((destH - ah) / 2);
+    videoArt = { x: ax, y: PX.H + ay, w: aw, h: ah };
 
-    const offsetX = (width - displayW) / 2;
-    const offsetY = (destH - displayH) / 2;
+    const offsetX = ax * PX.S, offsetY = ay * PX.S;
+    const displayW = aw * PX.S, displayH = ah * PX.S;
     videoOffsetX  = offsetX;
     videoOffsetY  = offsetY;
     videoDisplayW = displayW;
     videoDisplayH = displayH;
 
-    drawCareScore(offsetX);
+    PX.begin();
+    PX.call(drawCareScore, offsetX);
     manageGallery();
-    drawSmileGallery(offsetX);
+    PX.call(drawSmileGallery, offsetX);
+    PX.end();
 
     push();
-    translate(width - offsetX, splitY() + offsetY);
+    translate(offsetX + displayW, splitY() + offsetY);
     scale(-1, 1);
     image(video, 0, 0, displayW, displayH);
     pop();
 
-    drawBoxes(detections, offsetX, displayW, displayH);
-    drawFaceDecorations(detections);
+    PX.begin();
+    PX.call(drawBoxes, detections, offsetX, displayW, displayH);
+    PX.call(drawFaceDecorations, detections);
+    PX.end();
   }
 
   // Snap check — group snap: bundle co-smiling faces into one flower
@@ -466,12 +481,6 @@ if (groundhog) {
               [random(360), random(55, 90), random(55, 72)]);
   }
 
-  // Smile indicator dot
-  push(); noStroke();
-  fill(h ? color(55, 90, 60, 255) : color(0, 0, 70, 255));
-  ellipse(width - 16, splitY() + 16, 12, 12);
-  pop();
-
   // Kids weather & night behaviour
   const noKidsWeather = weatherState === 'rainy' || weatherState === 'stormy';
   const noKidsNight = nightAmount() > 0.4;
@@ -489,16 +498,7 @@ if (groundhog) {
     }
   }
 
-  // Group snap label
-  if (groupSnapAlpha > 0) {
-    push();
-    noStroke(); fill(55, 90, 65, groupSnapAlpha);
-    textAlign(CENTER, CENTER); textStyle(BOLD);
-    textSize(28);
-    text(groupSnapLabel, width / 2, splitY() - 40);
-    pop();
-    groupSnapAlpha -= 3;
-  }
+  if (groupSnapAlpha > 0) groupSnapAlpha -= 3;
 
   // Hat Time — only when raining
   const isRaining = weatherState === 'rainy' || weatherState === 'stormy';
@@ -513,19 +513,150 @@ if (groundhog) {
   }
   wasRaining = isRaining;
 
-  if (hatTimeAlpha > 0) {
-    push();
-    noStroke(); fill(200, 70, 60, hatTimeAlpha);
-    textAlign(CENTER, CENTER); textStyle(BOLD);
-    textSize(34);
-    text("It's raining, put on a hat!", width / 2, splitY() - 75);
-    pop();
-    hatTimeAlpha -= 2;
-  }
+  if (hatTimeAlpha > 0) hatTimeAlpha -= 2;
 
-  updateDrawConfetti();
-  drawCountdown();
+  PX.begin();
+  PX.call(updateDrawConfetti);
+  PX.call(drawCountdown);
+  PX.end();
   t++;
+}
+
+// ── Garden render helpers ─────────────────────────────
+
+// Colours the finished garden for the time of day (and storms) without
+// touching the still-transparent sky.
+function applyGardenTint() {
+  const c = drawingContext;
+  const layers = [];
+  const a = lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'a');
+  if (a > 0.01) {
+    const r = Math.round(lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'r'));
+    const g = Math.round(lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'g'));
+    const b = Math.round(lerpKeyframes(TINT_KEYFRAMES, timeOfDay, 'b'));
+    layers.push([`rgb(${r},${g},${b})`, a]);
+  }
+  if (weatherAlpha > 0.02) layers.push(['#39445c', Math.min(weatherAlpha, 1) * 0.26]);
+  if (!layers.length) return;
+  c.globalCompositeOperation = 'source-atop';
+  for (const [col, alpha] of layers) {
+    c.globalAlpha = alpha;
+    c.fillStyle = col;
+    c.fillRect(0, 0, PX.W, PX.H);
+  }
+  c.globalAlpha = 1;
+  c.globalCompositeOperation = 'source-over';
+}
+
+// Paints the sky layer (gradient, then sun/moon/stars/clouds and weather)
+// and slides it in behind everything already on the canvas.
+function drawSkyBehind(pixelSky) {
+  const sky = PX._skyCv.getContext('2d');
+  const key = Math.floor(timeOfDay * 900) + '|' + Math.round(weatherAlpha * 20);
+  sky.drawImage(PX.skyGradient(skyStops(), key), 0, 0);
+  if (pixelSky) PX.withTarget(sky, drawSkyLayer);
+  if (typeof drawWeatherSky === 'function') PX.withTarget(sky, drawWeatherSky);
+  const c = drawingContext;
+  c.globalCompositeOperation = 'destination-over';
+  c.drawImage(PX._skyCv, 0, 0);
+  c.globalCompositeOperation = 'source-over';
+}
+
+// Big announcements over the garden: group photos and rain hat time.
+function drawGardenLabels() {
+  if (groupSnapAlpha > 0) {
+    PX.alpha(groupSnapAlpha / 255, () => {
+      PX.text(groupSnapLabel, PX.W / 2, PX.H - 30,
+        { font: 'bold', scale: 2, align: 'center', color: PAL.ye2, outline: PAL.ink });
+    });
+  }
+  if (hatTimeAlpha > 0) {
+    PX.alpha(hatTimeAlpha / 255, () => {
+      PX.text("It's raining, put on a hat!", PX.W / 2, PX.H - 56,
+        { font: 'bold', scale: 2, align: 'center', color: PAL.wa1, outline: PAL.ink });
+    });
+  }
+}
+
+// ── Debug URL parameters ──────────────────────────────
+// Handy for testing and screenshots, e.g.
+//   ?t=0.75&weather=rainy&flowers=40&spawn=kids,perkins&seed=7&freeze=1
+//   t        time of day 0..1 (0.25 morning, 0.5 midday, 0.6 golden hour, 0.9 night)
+//   weather  sunny | cloudy | rainy | stormy | clearing
+//   speed    day-cycle multiplier, freeze=1 stops the clock
+//   flowers  plant this many demo flowers with stand-in faces
+//   spawn    comma list: kids, rabbit, groundhog, perkins, conant, principal,
+//            teachers, arrivals, departures, confetti, hats
+//   panel    show one side panel: gallery | ram | gardener | kids | school | ...
+//   score    set today's CARE score
+//   seed     fixed random seed for repeatable layouts
+const DEBUG = { seed: null, active: false };
+
+function readDebugParams() {
+  const q = new URLSearchParams(window.location.search);
+  DEBUG.q = q;
+  DEBUG.active = [...q.keys()].length > 0;
+  if (q.has('seed')) DEBUG.seed = parseInt(q.get('seed')) || 1;
+}
+
+function applyDebugParams() {
+  const q = DEBUG.q;
+  if (!q || !DEBUG.active) return;
+  if (q.has('t')) dayNightT = Math.round(parseFloat(q.get('t')) * DAY_CYCLE_DURATION);
+  if (q.has('speed')) daySpeed = parseFloat(q.get('speed')) || 1;
+  if (q.has('freeze')) daySpeed = 0;
+  if (q.has('weather')) {
+    weatherState = q.get('weather');
+    weatherTimer = 999999; weatherDuration = 999999;
+    weatherAlpha = { sunny: 0, cloudy: 0.3, rainy: 0.6, stormy: 1, clearing: 0.3 }[weatherState] || 0;
+  }
+  if (q.has('score')) { careScore = parseInt(q.get('score')) || 0; smileStats.today = careScore; }
+  if (q.has('panel')) {
+    panelMode = q.get('panel');
+    panelCycleIdx = Math.max(0, panelCycle.indexOf(panelMode));
+    panelModeTimer = Infinity;   // millis() - Infinity never exceeds the cycle time
+  }
+  const n = parseInt(q.get('flowers')) || 0;
+  for (let i = 0; i < n; i++) {
+    const group = i % 4 === 3 ? 2 + (i % 5) : (i % 6 === 5 ? 0 : 1);
+    nextFlowerImgs = [];
+    for (let k = 0; k < group; k++) nextFlowerImgs.push(makeDemoFace(i * 7 + k));
+    if (group > 0 && i < MAX_GALLERY) smileGallery.push({ img: makeDemoFace(i * 7), alpha: 255 });
+    addFlower(random(0.05, 0.95), random(0.28, 1.0), [random(360), random(55, 90), random(55, 72)]);
+  }
+  for (let f of flowers) { f.size = f.targetSize; f.dirtAlpha = 0; }
+  for (const what of (q.get('spawn') || '').split(',')) {
+    if (what === 'kids')       for (let i = 0; i < 5; i++) kids.push(new Kid());
+    if (what === 'rabbit')     { rabbits.push(new Rabbit()); rabbits.push(new Rabbit()); }
+    if (what === 'groundhog')  groundhog = new Groundhog();
+    if (what === 'perkins')    mrPerkins = new MrPerkins();
+    if (what === 'conant')     mrConant = new MrConant();
+    if (what === 'principal')  principal = new Principal('dawn');
+    if (what === 'teachers')   for (let i = 0; i < 3; i++) teachers.push(new Teacher(i % 2 === 0));
+    if (what === 'arrivals')   for (let i = 0; i < 5; i++) arrivalKids.push(new ArrivalKid(false));
+    if (what === 'departures') for (let i = 0; i < 5; i++) arrivalKids.push(new ArrivalKid(true));
+    if (what === 'confetti')   { lastMilestoneCelebrated = 100; launchConfetti(); }
+    if (what === 'hats')       { hatTimeActive = true; hatTimeAlpha = 255; }
+  }
+}
+
+// A stand-in "photo" of a smiling face so flowers can be tested without a camera.
+function makeDemoFace(i) {
+  const g = createGraphics(96, 96);
+  g.pixelDensity(1);
+  g.colorMode(HSL, 360, 100, 100, 255);
+  g.noStroke();
+  g.background((i * 47) % 360, 35, 78);
+  const skin = [[28, 60, 82], [26, 55, 70], [24, 50, 56], [22, 45, 40], [20, 40, 30]][i % 5];
+  g.fill((i * 83) % 60 + 10, 45, 18 + (i * 13) % 45);
+  g.ellipse(48, 38, 76, 70);                       // hair
+  g.fill(skin[0], skin[1], skin[2]);
+  g.ellipse(48, 52, 60, 68);                       // face
+  g.fill(0, 0, 12);
+  g.ellipse(36, 46, 7, 9); g.ellipse(60, 46, 7, 9);
+  g.noFill(); g.stroke(0, 60, 30); g.strokeWeight(3);
+  g.arc(48, 60, 30, 22, 0.15, PI - 0.15);          // smile
+  return g;
 }
 
 // Checks NSFW model predictions to ensure the video frame is appropriate
@@ -565,6 +696,7 @@ function addFlower(wx, wy, hsl) {
 // Resizes the canvas when the browser window changes size
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+  PX.resize(drawingContext, width, height);
 }
 
 // Toggles fullscreen mode on mouse click

@@ -11,11 +11,11 @@
 // ── World / Coordinate System ─────────────────────────
 
 // Returns the y-coordinate that divides the sky from the ground (2/3 down the canvas)
-function splitY()    { return height * (2/3); }
+function splitY()    { return PX.H * PX.S; }
 // Returns the y-coordinate of the front edge of the ground plane
 function gndFront()  { return splitY(); }
 // Returns the y-coordinate of the horizon line
-function gndHorizon(){ return height * 0.27; }
+function gndHorizon(){ return PX.HOR * PX.S; }
 // Returns the left edge of the ground plane (screen left)
 function gndLeft()   { return 0; }
 // Returns the right edge of the ground plane (screen right)
@@ -29,6 +29,13 @@ function worldToScreen(wx, wy) {
     sx: lerp(lx, rx, wx),
     sy: lerp(gndHorizon(), gndFront(), wy)
   };
+}
+
+// Converts normalized world coordinates to ART pixels: the point where a
+// character's feet (or a flower's stem) touch the ground. Pixel-art
+// characters are all drawn at one size; depth comes from y-position alone.
+function worldToPx(wx, wy) {
+  return PX.toPx(wx, wy);
 }
 
 // Returns a scale factor (0.4 to 0.9) based on depth for perspective sizing

@@ -10,7 +10,10 @@
 html, body {
   margin: 0;
   padding: 0;
+  background: #15121c;
+  overflow: hidden;
 }
 canvas {
   display: block;
+  image-rendering: pixelated;   /* keep art pixels square on high-DPI screens */
 }

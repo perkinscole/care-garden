@@ -1,0 +1,62 @@
+<!--
+  Sprite sheet viewer for the CARE Garden pixel art.
+  Open http://localhost:8000/tools/sprites.html to see every sprite that
+  js/art/*.js defines, enlarged, with every frame laid out and labelled.
+    ?zoom=6        enlargement (default 6)
+    ?only=rabbit   show only sprites whose name contains this text
+    ?bg=5aa246     background colour (default is lawn green)
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>CARE Garden sprites</title>
+  <style>
+    body { margin: 0; background: #2b2b33; color: #fbf7ee; font: 13px/1.4 monospace; }
+    .sheet { display: flex; flex-wrap: wrap; gap: 14px; padding: 14px; align-items: flex-end; }
+    .card { background: #3b3f52; padding: 8px; }
+    .card canvas { display: block; image-rendering: pixelated; }
+    .card b { display: block; margin-bottom: 6px; }
+    .card small { opacity: .7; }
+  </style>
+  <script src="../js/pixel.js"></script>
+  <script src="../js/art/scene_art.js"></script>
+  <script src="../js/art/town_art.js"></script>
+  <script src="../js/art/weather_art.js"></script>
+  <script src="../js/art/animals_art.js"></script>
+  <script src="../js/art/people_art.js"></script>
+  <script src="../js/art/flowers_art.js"></script>
+  <script src="../js/art/hats_art.js"></script>
+  <script src="../js/art/ui_art.js"></script>
+</head>
+<body>
+  <div class="sheet" id="sheet"></div>
+  <script>
+    const q = new URLSearchParams(location.search);
+    const zoom = parseInt(q.get('zoom')) || 6;
+    const only = q.get('only');
+    const bg = '#' + (q.get('bg') || '5aa246');
+    const sheet = document.getElementById('sheet');
+    for (const name of Object.keys(PX.sprites).sort()) {
+      if (only && !name.includes(only)) continue;
+      const s = PX.sprites[name];
+      const gap = 2;
+      const cv = document.createElement('canvas');
+      cv.width = (s.w + gap) * s.frames.length + gap;
+      cv.height = s.h + gap * 2;
+      cv.style.width = cv.width * zoom + 'px';
+      const g = cv.getContext('2d');
+      g.fillStyle = bg; g.fillRect(0, 0, cv.width, cv.height);
+      s.frames.forEach((f, i) => g.drawImage(f.cv, gap + i * (s.w + gap), gap));
+      const card = document.createElement('div');
+      card.className = 'card';
+      const labels = s.names ? s.names.join(' · ') : s.frames.length + ' frame' + (s.frames.length > 1 ? 's' : '');
+      card.innerHTML = `<b>${name}</b>`;
+      card.appendChild(cv);
+      card.insertAdjacentHTML('beforeend', `<small>${s.w}×${s.h} &nbsp; ${labels}</small>`);
+      sheet.appendChild(card);
+    }
+    if (!sheet.children.length) sheet.textContent = 'No sprites defined yet.';
+  </script>
+</body>
+</html>

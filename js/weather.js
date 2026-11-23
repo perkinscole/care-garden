@@ -78,10 +78,10 @@ function drawWeather() {
 
   // Night: mute birds, play night sound — Day: mute night sound
   if (na > 0.3) {
-    if (birds && birds.isPlaying()) birds.pause();
-    if (nightSound && !nightSound.isPlaying()) nightSound.loop();
+    soundPause(birds);
+    soundLoop(nightSound);
   } else {
-    if (nightSound && nightSound.isPlaying()) nightSound.pause();
+    soundPause(nightSound);
   }
 
   if (weatherAlpha < 0.01) return;
@@ -96,8 +96,8 @@ function drawWeather() {
     drawStormClouds();
   }
   if (weatherState === 'rainy' || weatherState === 'stormy') {
-    if (birds && birds.isPlaying()) birds.pause();
-    if (rain && !rain.isPlaying()) rain.loop();
+    soundPause(birds);
+    soundLoop(rain);
     drawRain();
   }
   if (lightningAlpha > 0) {
@@ -108,13 +108,13 @@ function drawWeather() {
   }
   if (weatherState === 'clearing') {
     if (na < 0.3) drawRainbow();
-    if (rain && rain.isPlaying()) rain.pause();
-    if (na < 0.3 && birds && !birds.isPlaying()) birds.loop();
+    soundPause(rain);
+    if (na < 0.3) soundLoop(birds);
   }
   // Stop rain when jumping directly to sunny/cloudy (e.g. keyboard shortcut)
   if (weatherState === 'sunny' || weatherState === 'cloudy') {
-    if (rain && rain.isPlaying()) rain.pause();
-    if (na < 0.3 && birds && !birds.isPlaying()) birds.loop();
+    soundPause(rain);
+    if (na < 0.3) soundLoop(birds);
   }
 }
 

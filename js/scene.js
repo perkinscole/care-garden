@@ -9,6 +9,23 @@
 
 // ── Scene Drawing ─────────────────────────────────────
 
+// Colour stops for the dithered sky gradient, top of the sky to the horizon.
+// Storm weather greys the whole thing out.
+function skyStops() {
+  const hue = lerpKeyframes(SKY_KEYFRAMES, timeOfDay, 'hue');
+  const sat = lerpKeyframes(SKY_KEYFRAMES, timeOfDay, 'sat');
+  const top = lerpKeyframes(SKY_KEYFRAMES, timeOfDay, 'litTop');
+  const bot = lerpKeyframes(SKY_KEYFRAMES, timeOfDay, 'litBot');
+  const stops = [];
+  for (let i = 0; i < 5; i++) {
+    const k = i / 4;
+    let col = PX.hsl(hue, sat - 10 * k, top + (bot - top) * k);
+    if (weatherAlpha > 0.02) col = PX.mix(col, '#6f7a8c', Math.min(weatherAlpha, 1) * 0.6);
+    stops.push(col);
+  }
+  return stops;
+}
+
 // Draws the perspective ground plane with a gradient that shifts by time of day
 function drawGround() {
   noStroke();

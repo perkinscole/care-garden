@@ -50,6 +50,23 @@ const SKY_KEYFRAMES = [
   { t: 1.00, hue: 230, sat: 40, litTop: 12, litBot: 18 },   // midnight (wrap)
 ];
 
+// Time-of-day tint laid over the finished garden (never the sky).
+// r/g/b is the tint colour, a is its strength (0 = untouched daylight).
+const TINT_KEYFRAMES = [
+  { t: 0.00, r: 22,  g: 28,  b: 84,  a: 0.56 },   // night
+  { t: 0.03, r: 22,  g: 28,  b: 84,  a: 0.56 },
+  { t: 0.06, r: 92,  g: 62,  b: 118, a: 0.34 },   // first light
+  { t: 0.09, r: 255, g: 150, b: 96,  a: 0.16 },   // dawn glow
+  { t: 0.13, r: 255, g: 220, b: 170, a: 0.00 },   // morning
+  { t: 0.52, r: 255, g: 200, b: 120, a: 0.00 },   // midday
+  { t: 0.56, r: 255, g: 176, b: 84,  a: 0.14 },   // golden hour
+  { t: 0.64, r: 226, g: 100, b: 64,  a: 0.22 },   // sunset
+  { t: 0.68, r: 96,  g: 72,  b: 140, a: 0.36 },   // dusk
+  { t: 0.72, r: 44,  g: 44,  b: 110, a: 0.48 },
+  { t: 0.78, r: 22,  g: 28,  b: 84,  a: 0.56 },   // night
+  { t: 1.00, r: 22,  g: 28,  b: 84,  a: 0.56 },
+];
+
 // Ground gradient keyframes keyed by normalized time-of-day (0..1)
 // Ground color keyframes: [timeOfDay, hue, satHorizon, litHorizon, satFront, litFront]
 const GROUND_KEYFRAMES = [

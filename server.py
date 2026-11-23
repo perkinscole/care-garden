@@ -52,7 +52,9 @@ class CareGardenHandler(SimpleHTTPRequestHandler):
             self.send_error(400, 'Invalid JSON')
 
 if __name__ == '__main__':
+    import sys
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    server = HTTPServer(('', 8000), CareGardenHandler)
-    print('CARE Garden server running at http://localhost:8000')
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000   # python3 server.py [port]
+    server = HTTPServer(('', port), CareGardenHandler)
+    print(f'CARE Garden server running at http://localhost:{port}')
     server.serve_forever()

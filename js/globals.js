@@ -48,6 +48,7 @@ let videoOffsetX = 0;
 let videoOffsetY = 0;
 let videoDisplayW = 0;
 let videoDisplayH = 0;
+let videoArt = { x: 0, y: 0, w: 0, h: 0 };   // the same rectangle in art pixels
 
 // Character instances and spawn timers
 let ram, gardener, goose, cat;
