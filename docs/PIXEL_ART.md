@@ -185,10 +185,12 @@ top-right corner (art y 3–21).
   and the students read them.
 - **Sounds.** Use `soundPlay`, `soundLoop`, `soundPause`, `soundStop` from
   `js/audio.js`; they are safe before a file has loaded.
-- **School.** The main entrance is centred on `wx = 0.5`. Door thresholds sit
-  at art `y = PX.HOR + 3`, and the sidewalk runs along the front of the
-  building from about `PX.HOR + 3` to `PX.HOR + 12`. Characters going inside
-  walk to `wy ≈ 0.01–0.02` at `wx ≈ 0.5 ± 0.06`.
+- **School.** The main entrance is two pairs of doors either side of
+  `wx = 0.5`. Door thresholds sit at art `y = PX.HOR + 3`, and the sidewalk
+  runs along the front of the building from about `PX.HOR + 3` to
+  `PX.HOR + 12`. People going inside walk to a spot in front of a door,
+  turn, and step in seen from behind: use `PEOPLE.goIn` in
+  `js/art/people_art.js` rather than picking coordinates.
 
 ## Checking your work
 
