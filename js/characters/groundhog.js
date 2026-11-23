@@ -92,9 +92,8 @@ class Groundhog {
     const rows = Math.round(this.emerge * GROUNDHOG_ROWS) - bob;
     if (rows > 0) {
       const pose = this.blink > 0 ? 'blink' : (this.lookDir === 0 ? 'front' : 'side');
-      // (a mirrored 13-wide sprite lands one pixel to the left, so nudge it back)
       const flip = this.lookDir < 0;
-      PX.spr('groundhog', x + (flip ? 1 : 0), y + 1, { frame: pose + rows, flip });
+      PX.spr('groundhog', x, y + 1, { frame: pose + rows, flip });
     }
 
     PX.spr('groundhog_hole', x, y + 3, { frame: 'front', alpha: holeAlpha });

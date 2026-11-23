@@ -361,7 +361,7 @@ const PX = {
     }
     const spr = {
       name, w, h, rows: frames, pal: def.pal, names,
-      ax: def.anchor ? def.anchor[0] : Math.floor(w / 2),
+      ax: def.anchor ? def.anchor[0] : w / 2,   // may be x.5 so odd widths mirror in place
       ay: def.anchor ? def.anchor[1] : h,
       frames: null,
     };
@@ -414,7 +414,7 @@ const PX = {
     if (typeof fi === 'string') fi = s.names ? Math.max(0, s.names.indexOf(fi)) : 0;
     const f = s.frames[((fi | 0) % s.frames.length + s.frames.length) % s.frames.length];
     const c = this.c;
-    const dx = Math.round(x) - (opts.flip ? s.w - s.ax : s.ax);
+    const dx = Math.round(Math.round(x) - (opts.flip ? s.w - s.ax : s.ax));
     const dy = Math.round(y) - s.ay;
     if (opts.alpha !== undefined && opts.alpha < 1) {
       const prev = c.globalAlpha;
