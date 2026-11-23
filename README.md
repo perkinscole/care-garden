@@ -4,6 +4,12 @@ An interactive garden simulation built for **Robert Adams Middle School** in Hol
 
 Every smile plants a flower with the student's face at its center. Smile together and you'll grow a group flower. The garden lives and breathes on its own — characters wander, weather changes, and the sun rises and sets throughout the day.
 
+The whole garden is drawn as pixel art.
+
+![The CARE Garden by day](docs/screenshots/day.png)
+
+![The CARE Garden at night](docs/screenshots/night.png)
+
 ## How It Works
 
 1. Stand in front of the camera and **smile**
@@ -15,7 +21,7 @@ Every smile plants a flower with the student's face at its center. Smile togethe
 ## What You'll See
 
 ### The Garden
-A living world with a full day/night cycle (~15 minutes per day), dynamic weather (sun, clouds, rain, storms), and a hand-drawn school building modeled after Robert Adams Middle School. The town of Holliston appears in the background with its church, town hall, and rail trail.
+A living world with a full day/night cycle (~15 minutes per day), dynamic weather (sun, clouds, rain, storms), and a pixel-art school building modeled after Robert Adams Middle School. The town of Holliston appears in the background with its church, town hall, and rail trail.
 
 ### The Characters
 
@@ -37,7 +43,7 @@ A living world with a full day/night cycle (~15 minutes per day), dynamic weathe
 ### Weather & Time
 - The sky transitions through dawn, morning, midday, golden hour, sunset, dusk, and night
 - Weather cycles between sunny, cloudy, rainy, and stormy
-- When it rains, hats appear on detected faces ("Hat Time!")
+- When it rains, pixel hats and crowns appear on detected faces ("Hat Time!")
 - Fireflies come out at night; stars twinkle overhead
 
 ### Dawn & Dusk
@@ -52,12 +58,33 @@ No build tools required — it's plain HTML with script tags.
 
 ```bash
 cd care-garden
-python3 -m http.server 8000
+python3 server.py
 ```
 
-Open **http://localhost:8000** in Chrome. You'll need to allow camera access.
+Open **http://localhost:8000** in Chrome. You'll need to allow camera access. `server.py` also saves the smile counts to `stats.json` so they survive a browser restart (`python3 server.py 8080` uses another port).
 
-> **Note:** The webcam requires HTTPS or localhost. If hosting remotely, use a service that provides HTTPS (GitHub Pages, Netlify, etc.).
+> **Note:** The webcam requires HTTPS or localhost. If hosting remotely, use a service that provides HTTPS (GitHub Pages, Netlify, etc.). Without `server.py` the counts are kept in the browser only.
+
+The libraries load from their CDNs and fall back to the copies in this folder if the network is down. The face-detection models are still downloaded at startup, so the camera features need an internet connection.
+
+### Trying things without a camera
+
+Add parameters to the address to set up a scene:
+
+```
+http://localhost:8000/?t=0.9&weather=rainy&flowers=40&spawn=kids
+```
+
+| Parameter | What it does |
+|---|---|
+| `t` | Time of day, 0 to 1 (0.3 morning, 0.6 golden hour, 0.9 night) |
+| `weather` | `sunny`, `cloudy`, `rainy`, `stormy` or `clearing` |
+| `flowers` | Plant this many demo flowers with stand-in faces (`settled=1` shows them at garden size) |
+| `spawn` | Comma list: `kids`, `rabbit`, `birds`, `groundhog`, `perkins`, `conant`, `principal`, `teachers`, `arrivals`, `departures`, `confetti`, `hats` |
+| `panel` | Pin the right-hand panel: `gallery`, `ram`, `gardener`, `kids`, `school`, ... |
+| `score`, `speed`, `freeze`, `seed` | Set the count, change or stop the clock, fix the random layout |
+
+`tools/sprites.html` shows every sprite enlarged, and `node tools/shot.js <url> out.png` takes a screenshot in headless Chrome with a fake camera (needs [Playwright](https://playwright.dev/)).
 
 ## Keyboard Controls
 
@@ -77,7 +104,8 @@ Open **http://localhost:8000** in Chrome. You'll need to allow camera access.
 
 ## Tech Stack
 
-- **[p5.js](https://p5js.org/)** — Canvas rendering, animation, and sound
+- **[p5.js](https://p5js.org/)** — Canvas, input, sound and the draw loop
+- **PX** (`js/pixel.js`) — The garden's own small pixel-art renderer: one shared pixel grid, a palette, sprites typed out as text, and bitmap text
 - **[ml5.js](https://ml5js.org/)** — Face detection with expression recognition (faceApi)
 - **[nsfwjs](https://nsfwjs.com/)** — Content moderation on camera frames
 - Plain HTML, no bundler or build step
@@ -88,39 +116,39 @@ Open **http://localhost:8000** in Chrome. You'll need to allow camera access.
 care-garden/
   index.html              Entry point — loads all scripts
   sketch.js               Main setup() and draw() loop
+  server.py               Local server; saves smile stats to stats.json
   style.css               Minimal styles
   js/
+    pixel.js               PX pixel-art engine and the master palette
+    art/                   Sprite definitions (animals, people, flowers, hats, ...)
+    audio.js               Safe sound playback helpers
     constants.js           Config, keyframes, character cards, phrases
     globals.js             All mutable global state
     world.js               Coordinate system and day/night helpers
-    scene.js               Sky, ground, trees, school building
+    scene.js               Sky, lawn, trees, school building
     town.js                Town backdrop (shops, cars, walkers)
     weather.js             Weather state machine and rain/storm effects
-    flowers.js             Flower class with petal types and face images
+    flowers.js             Flower class: types, growth, faces
     creatures.js           Butterfly, Bee, Bird classes
-    ui.js                  CARE score, gallery, speech bubbles, confetti
+    ui.js                  CARE score, gallery, I SPY cards, speech bubbles, confetti
     facedetection.js       Face detection, smile tracking, hat overlays
-    characters/
-      ram.js               Ramy the Ram
-      gardener.js          The Gardener
-      kids.js              Kid + ArrivalKid (backpack students)
-      goose.js             The Goose
-      cat.js               The Cat
-      rabbit.js            Rabbit
-      mrperkins.js         Mr. Perkins (creator cameo)
-      mrconant.js          Mr. Conant (CARE team lead cameo)
-      groundhog.js         Groundhog
-      principal.js         Principal Manning
-      teacher.js           Teacher (dawn/dusk arrivals)
-  images/
-    hat1-5.png             Hat decoration overlays
+    characters/            Ram, gardener, students, goose, cat, rabbit, groundhog,
+                           teachers, Principal Manning, Mr. Perkins, Mr. Conant
+  docs/
+    PIXEL_ART.md           How the pixel art works and the rules for adding to it
+  tools/
+    sprites.html           Sprite sheet viewer
+    shot.js                Screenshot tool
+  fonts/                   Pixel fonts (Tiny5, Press Start 2P — SIL Open Font License)
   sounds/
     birds.mp3, rain.mp3, night.mp3, sheep.wav, ...
 ```
 
+Want to draw a new character or flower? Start with `docs/PIXEL_ART.md`; the rabbit (`js/characters/rabbit.js` and its sprite in `js/art/animals_art.js`) is the smallest complete example.
+
 ## The CARE Score
 
-Every face captured becomes a flower and adds to the school's CARE score. The score is tracked with daily counts, weekly totals, and an all-time record — all saved in the browser's localStorage. Milestones trigger confetti celebrations.
+Every face captured becomes a flower and adds to the school's CARE score. The score is tracked with daily counts, weekly totals, and an all-time record — saved in the browser and, when run with `server.py`, in `stats.json`. Milestones trigger confetti celebrations.
 
 ## Credits
 
