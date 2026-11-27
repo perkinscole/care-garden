@@ -73,11 +73,12 @@ const PX = {
   resize(ctx, pxW, pxH) {
     this.main = ctx;
     this.c = ctx;
+    // A window dragged down to nothing must still give a usable grid
     this.S = Math.max(1, Math.floor(pxH / 360));
-    this.W = Math.ceil(pxW / this.S);
-    this.SH = Math.ceil(pxH / this.S);
+    this.W = Math.max(16, Math.ceil(pxW / this.S));
+    this.SH = Math.max(12, Math.ceil(pxH / this.S));
     this.H = Math.round(this.SH * 2 / 3);
-    this.HOR = Math.round(this.SH * 0.27);
+    this.HOR = Math.min(Math.round(this.SH * 0.27), this.H - 2);
     this._skyCv = document.createElement('canvas');
     this._skyCv.width = this.W;
     this._skyCv.height = this.H;

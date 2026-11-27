@@ -45,10 +45,14 @@ function setup() {
     } catch (e) { video = null; }
   }
 
-  if (typeof nsfwjs !== 'undefined' && !DEBUG.demo) nsfwjs.load().then(function(model) {
-    nsfwModel = model;
-    nsfwReady = true;
-  }).catch(function() { /* no moderation model (offline): snaps are allowed through */ });
+  // Photo moderation runs in its own hidden frame (see moderation.html)
+  if (!DEBUG.demo) {
+    moderationFrame = document.createElement('iframe');
+    moderationFrame.src = 'moderation.html';
+    moderationFrame.setAttribute('aria-hidden', 'true');
+    moderationFrame.style.cssText = 'position:absolute;width:1px;height:1px;border:0;opacity:0;pointer-events:none';
+    document.body.appendChild(moderationFrame);
+  }
 
   soundFormats('mp3', 'wav');
   birds = loadSound('sounds/birds.mp3',    () => { birds.setVolume(0.4); birds.loop(); });
@@ -124,6 +128,14 @@ rain= loadSound('sounds/rain.mp3', () => { rain.setVolume(0.2); });
 
   panelCycle = getPanelCycle();
   applyDebugParams();
+
+  // Last line of defence for an unattended screen: if frames stop arriving
+  // altogether for half a minute, start again.
+  let lastBeatFrame = -1;
+  setInterval(function() {
+    if (frameCount === lastBeatFrame && !document.hidden && !DEBUG.active) window.location.reload();
+    lastBeatFrame = frameCount;
+  }, 30000);
 }
 
 // Builds the panel rotation order: gallery first, then each character card
@@ -136,6 +148,25 @@ function getPanelCycle() {
 // Main render loop — runs every frame (60fps). Updates world state,
 // draws scene layers, processes face detection, and handles smile snaps
 function draw() {
+  // p5 only schedules the next frame after this one returns, so a single
+  // uncaught error would freeze the kiosk until someone reloaded it.
+  try {
+    drawFrame();
+    drawFailures = 0;
+  } catch (err) {
+    console.error('CARE Garden: a frame failed', err);
+    const c = drawingContext;
+    for (let i = 0; i < 8; i++) c.restore();     // unwind whatever was left open
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = 'source-over';
+    PX.c = PX.main;
+    // Something that fails every frame for ten seconds will not fix itself
+    if (++drawFailures > 600 && !DEBUG.active) window.location.reload();
+  }
+}
+
+function drawFrame() {
   if (random() < 0.008) windTarget = random(-1, 1);
   windX += (windTarget - windX) * 0.004;
 
@@ -153,7 +184,7 @@ function draw() {
   // detections (so hats/boxes stop drawing on ghost positions) and re-kick the loop.
   if (lastFaceUpdate > 0 && millis() - lastFaceUpdate > 5000) {
     detections = [];
-    try { if (faceapi) faceapi.detect(gotFaces); } catch (e) { /* ignore */ }
+    startDetect();
     lastFaceUpdate = millis(); // debounce: give it 5s before next kick
   }
 
@@ -435,38 +466,22 @@ if (groundhog) {
         groupImgs.push(captureFaceImg(det.alignedRect._box));
       }
 
-      // NSFW check — if model is ready, verify the video frame is safe
-      if (nsfwReady && nsfwModel) {
-        const vidEl = document.getElementById('video');
-        nsfwModel.classify(vidEl).then(function(predictions) {
-          const validImgs = isFrameSafe(predictions) ? groupImgs : [];
-          if (validImgs.length > 0) {
-            careScore += validImgs.length;
-            saveSmileStats(validImgs.length);
-            checkMilestone();
-            nextFlowerImgs = validImgs;
-            pendingPhoto   = triggerImg;
-            if (validImgs.length > 1) {
-              groupSnapLabel = validImgs.length + '-Person Group Photo!';
-              groupSnapAlpha = 255;
-            }
-          } else {
-            // Unsafe — discard images
-            for (let img of groupImgs) img.remove();
-            postSnapPause = 0;
-          }
+      // Moderation check — if the model is ready, the frame must pass it
+      // before anyone's photo is shown. The flower is planted only once the
+      // answer is in, so a face can never land on the wrong flower.
+      const moderator = moderationWindow();
+      if (moderator) {
+        const vid = video.elt;
+        const mw = 320, mh = Math.round(320 * (videoH / videoW));
+        moderator.classifyFrame(vid, mw, mh).then(function(predictions) {
+          if (isFrameSafe(predictions)) plantSnap(groupImgs, triggerImg, true);
+          else discardSnap(groupImgs);
+        }).catch(function() {
+          discardSnap(groupImgs);      // could not check it: do not show it
         });
       } else {
-        // Model not loaded yet — allow through
-        careScore += groupImgs.length;
-        saveSmileStats(groupImgs.length);
-        checkMilestone();
-        nextFlowerImgs = groupImgs;
-        pendingPhoto   = triggerImg;
-        if (groupImgs.length > 1) {
-          groupSnapLabel = groupImgs.length + '-Person Group Photo!';
-          groupSnapAlpha = 255;
-        }
+        // No moderation model (still loading, or offline) — allow through
+        plantSnap(groupImgs, triggerImg, true);
       }
       break; // one snap event per frame
     }
@@ -474,12 +489,7 @@ if (groundhog) {
 
   if (DEBUG.demo) runDemoSmiles();
 
-  // Flower spawning — once per snap
   if (postSnapPause > 0) postSnapPause--;
-  if (postSnapPause === 89) {
-    addFlower(random(0.05, 0.95), random(FLOWER_MIN_WY, 1.0),
-              [random(360), random(55, 90), random(55, 72)]);
-  }
 
   // Kids weather & night behaviour
   const noKidsWeather = weatherState === 'rainy' || weatherState === 'stormy';
@@ -623,13 +633,7 @@ function runDemoSmiles() {
   const n = r < 0.7 ? 1 : r < 0.9 ? 2 : 3;
   const faces = [];
   for (let k = 0; k < n; k++) faces.push(makeDemoFace(floor(random(100000))));
-  careScore += n;
-  smileStats.today = careScore;
-  checkMilestone();
-  nextFlowerImgs = faces;
-  pendingPhoto = faces[0];
-  if (n > 1) { groupSnapLabel = n + '-Person Group Photo!'; groupSnapAlpha = 255; }
-  postSnapPause = 90;
+  plantSnap(faces, faces[0], false);
 }
 
 // A stand-in "photo" of a smiling face so flowers can be tested without a camera.
@@ -649,6 +653,36 @@ function makeDemoFace(i) {
   g.noFill(); g.stroke(0, 60, 30); g.strokeWeight(3);
   g.arc(48, 60, 30, 22, 0.15, PI - 0.15);          // smile
   return g;
+}
+
+// The moderation frame's window once its model has loaded, otherwise null.
+function moderationWindow() {
+  try {
+    const w = moderationFrame && moderationFrame.contentWindow;
+    return (w && w.moderationState === 'ready' && typeof w.classifyFrame === 'function') ? w : null;
+  } catch (e) { return null; }
+}
+
+// A snap that passed: count it, show it in the gallery and plant its flower.
+function plantSnap(imgs, galleryImg, save) {
+  careScore += imgs.length;
+  if (save) saveSmileStats(imgs.length);
+  else smileStats.today = careScore;
+  checkMilestone();
+  pendingPhoto = galleryImg;
+  if (imgs.length > 1) {
+    groupSnapLabel = imgs.length + '-Person Group Photo!';
+    groupSnapAlpha = 255;
+  }
+  nextFlowerImgs = imgs;
+  addFlower(random(0.05, 0.95), random(FLOWER_MIN_WY, 1.0),
+            [random(360), random(55, 90), random(55, 72)]);
+}
+
+// A snap that failed moderation: throw the photos away, plant nothing.
+function discardSnap(imgs) {
+  for (let img of imgs) img.remove();
+  postSnapPause = 0;
 }
 
 // Checks NSFW model predictions to ensure the video frame is appropriate
@@ -717,10 +751,9 @@ function mousePressed() {
 function keyPressed() {
   userStartAudio(); // resume AudioContext on interaction
   if (key === 'm' || key === 'M') {
-    if (birds && birds.isPlaying()) birds.pause();
-    else if (birds) birds.loop();
-    if (nightSound && nightSound.isPlaying()) nightSound.pause();
-    else if (nightSound && nightAmount() > 0.3) nightSound.loop();
+    // Mute or unmute the ambient loops; weather.js applies it next frame
+    ambientMuted = !ambientMuted;
+    ambientSound.birds = ambientSound.rain = ambientSound.night = null;
   }
   if (key === 'r' || key === 'R') {
     weatherState = 'rainy'; weatherTimer = 1800;
